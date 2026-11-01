@@ -135,8 +135,16 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
               <button class="secondary" type="button" id="distribute-test-bonus">Distribuir bônus de teste (#008)</button>
               <p class="hint" id="bonus-test-feedback" aria-live="polite"></p>
             </div>
+            </div>
+            <div id="draw-test-panel" style="display:none;margin-top:14px;border-top:1px solid #46745b;padding-top:14px">
+              <strong>🏁 Sorteio exclusivo de teste — rifa #008</strong>
+              <p class="hint">Sorteia entre os bilhetes pagos e os bônus da edição #008. Cada clique confirmado registra uma rodada no Supabase (máximo de três). Não ativa a rifa.</p>
+              <button class="secondary" type="button" id="draw-test-008" style="width:100%;margin-top:10px">Realizar sorteio de teste (#008)</button>
+              <p class="hint" id="draw-test-feedback" aria-live="polite"></p>
+              <div id="draw-test-result" class="record" style="display:none;margin-top:10px" aria-live="polite"></div>
+            </div>
           </div>
-         <div class="field"><label for="raffle-name">Título da nova rifa</label><input id="raffle-name" maxlength="120" placeholder="Ex.: Saldão Minis — Edição 2"></div>
+         <div class="field"><label for="raffle-name">Título da nova rifaTítulo da nova rifa</label><input id="raffle-name" maxlength="120" placeholder="Ex.: Saldão Minis — Edição 2"></div>
          <div class="formrow"><div class="field"><label for="admin-total">Total de números (1 a 1000)</label><input id="admin-total" type="number" min="1" max="1000" value="100"></div><div class="field"><label for="admin-unit">Preço unitário (R$)</label><input id="admin-unit" type="number" min="0.01" step="0.01" value="1.25"></div></div>
          <div class="formrow"><div class="field"><label for="admin-package-qty">Números por pacote</label><input id="admin-package-qty" type="number" min="2" max="1000" value="10"></div><div class="field"><label for="admin-package-price">Preço do pacote (R$)</label><input id="admin-package-price" type="number" min="0.01" step="0.01" value="10.00"></div></div>
          <div class="field"><label for="admin-whatsapp">WhatsApp com DDI</label><input id="admin-whatsapp" inputmode="numeric" placeholder="5511999999999"></div>
@@ -352,8 +360,12 @@ async function loadEditions(preferId){
   const isTest=chosen && chosen.titulo==="novo teste" && chosen.status==="rascunho" && (chosen.numero_edicao == null || Number(chosen.numero_edicao)===8);
   $("bonus-test-panel").style.display=isTest?"block":"none";
   $("distribute-test-bonus").disabled=!isTest;
-  $("bonus-test-feedback").textContent="";
- $("edition-status").textContent=chosenEdition()?`Edição selecionada: ${chosenEdition().titulo} (${chosenEdition().status}). A criação abaixo gera uma NOVA edição.`:"Nenhuma edição cadastrada.";
+   $("bonus-test-feedback").textContent="";
+   $("draw-test-panel").style.display=isTest?"block":"none";
+   $("draw-test-008").disabled=!isTest;
+   $("draw-test-feedback").textContent="";
+   $("draw-test-result").style.display="none";
+  $("edition-status").textContent=chosenEdition()?`Edição selecionada: ${chosenEdition().titulo} (${chosenEdition().status}). A criação abaixo gera uma NOVA edição.`:"Nenhuma edição cadastrada.";
   await Promise.all([renderRecords(),renderWinners(),renderAdminPhotos()]);
 }
 async function saveBonusConfig(){
@@ -393,7 +405,27 @@ async function distributeTestBonus(){
     toast("Falha na distribuição dos bônus.");
   }finally{btn.disabled=false;}
 }
-async function createEdition(){
+ async function drawTest008(){
+   const e=chosenEdition();
+   const isTest=e && e.titulo==="novo teste" && e.status==="rascunho" && (e.numero_edicao == null || Number(e.numero_edicao)===8);
+   if(!isTest){toast("Sorteio permitido somente na rifa de teste #008.");return;}
+   if(!confirm("ATENÇÃO: realizar um sorteio REAL DE TESTE na rifa #008 — novo teste? O resultado será gravado no Supabase e não poderá ser desfeito pelo painel. A rifa #006 não será alterada."))return;
+   const btn=$("draw-test-008"),feedback=$("draw-test-feedback"),result=$("draw-test-result");
+   btn.disabled=true;feedback.textContent="Registrando sorteio exclusivamente na rifa #008...";result.style.display="none";
+   try{
+     const {data,error}=await db.rpc("rifa_sortear_teste_008");
+     if(error)throw error;
+     if(!data || Number(data.rifa)!==8 || ![1,2,3].includes(Number(data.rodada)))throw new Error("Resultado inesperado. Consulte o histórico no Supabase antes de tentar novamente.");
+     const tipo=data.tipo_bilhete==="bonus"?"BILHETE BÔNUS":"NÚMERO PAGO";
+     result.textContent=`🏆 ${data.rodada}ª rodada — ${tipo}: ${data.bilhete_vencedor} — Vencedor: ${data.nome_vencedor||"não informado"}`;
+     result.style.display="block";
+     feedback.textContent="Resultado registrado na rifa #008. Confira também o histórico no Supabase antes de realizar outra rodada.";
+     toast("Sorteio de teste registrado!");
+     await renderWinners();
+   }catch(err){feedback.textContent="Não foi possível concluir: "+err.message;toast("Falha no sorteio de teste.");}
+   finally{btn.disabled=false;}
+ }
+ async function createEdition(){
  const title=$("raffle-name").value.trim(),total=Number($("admin-total").value),unit=Math.round(Number($("admin-unit").value)*100),qty=Number($("admin-package-qty").value),pack=Math.round(Number($("admin-package-price").value)*100);
  if(title.length<2||title.length>120||!Number.isInteger(total)||total<1||total>1000||!Number.isInteger(qty)||qty<2||qty>1000||!Number.isSafeInteger(unit)||unit<1||!Number.isSafeInteger(pack)||pack<1){toast("Confira os dados da nova edição.");return;}
  if(!confirm(`Criar uma nova edição chamada "${title}"? Ela ficará em rascunho até ser ativada.`))return;
@@ -482,7 +514,8 @@ $("login-btn").addEventListener("click",login);
 $("admin-password").addEventListener("keydown",e=>{if(e.key==="Enter")login();});
 $("save-settings").addEventListener("click",createEdition);
 $("save-bonus").addEventListener("click",saveBonusConfig);
-$("distribute-test-bonus").addEventListener("click",distributeTestBonus);
+ $("distribute-test-bonus").addEventListener("click",distributeTestBonus);
+ $("draw-test-008").addEventListener("click",drawTest008);
 $("upload-photos").addEventListener("click",uploadAdminPhotos);
 $("activate-edition").addEventListener("click",()=>changeEditionStatus("ativar"));
 $("finish-edition").addEventListener("click",()=>changeEditionStatus("finalizar"));
