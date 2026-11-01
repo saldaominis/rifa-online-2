@@ -34,7 +34,19 @@ const $=id=>document.getElementById(id);let eligible=[];let results=[];let spinn
 function err(e){return e?.message||String(e)}
 function isTest008(e){return e && e.titulo==='novo teste' && e.status==='rascunho';}
 function ticket(r){return r?.bilhete_vencedor ?? (r?.tipo_bilhete==='bonus'?r?.codigo_bonus:r?.numero_vencedor!=null?String(r.numero_vencedor):'??');}
-function formatTicket(v){const t=String(v??'??');return /^\d+$/.test(t)?t.padStart(2,'0'):t;}
+// Os códigos B001... continuam no banco; apenas a exibição é sequencial.
+// Na edição de teste #008, a rifa possui 100 números originais.
+function formatTicket(v){
+ const t=String(v??'??');
+ const match=/^B(\d+)$/i.exec(t);
+ if(match){
+   const e=editions.find(item=>item.id===editionId);
+   const base=Number(e?.total_numeros ?? (isTest008(e)?100:NaN));
+   if(Number.isSafeInteger(base) && base>0) return String(base+Number(match[1])).padStart(3,'0');
+   return t;
+ }
+ return /^\d+$/.test(t)?t.padStart(2,'0'):t;
+}
 async function loadEditions(){
  const {data,error}=await client.rpc('rifa_listar_edicoes_admin');if(error)throw error;
  editions=data||[];const sel=$('edition-choice');const previous=editionId;
@@ -99,9 +111,9 @@ $('draw').addEventListener('click',async()=>{
    }
    $('roulette').classList.remove('spinning');
    $('winner').textContent=formatTicket(bilhete);
-   $('resultlabel').textContent='🏆 '+rodada+'º prêmio — '+(data.tipo_bilhete==='bonus'?'BILHETE BÔNUS':'NÚMERO PAGO');
+   $('resultlabel').textContent='🏆 '+rodada+'º prêmio — '+(data.tipo_bilhete==='bonus'?'NÚMERO EXTRA (BÔNUS)':'NÚMERO PAGO');
    $('winnername').textContent=data.nome_vencedor||'Nome indisponível';
-   $('appmsg').textContent='Resultado salvo no Supabase. Bilhete vencedor: '+bilhete;
+   $('appmsg').textContent='Resultado salvo no Supabase. Bilhete vencedor: '+formatTicket(bilhete);
  }catch(e){$('roulette').classList.remove('spinning');$('appmsg').textContent=err(e)+' — atualize para consultar o resultado.';}
  finally{spinning=false;$('refresh').disabled=false;$('edition-choice').disabled=false;await load().catch(e=>{$('appmsg').textContent=err(e)});}
 });
