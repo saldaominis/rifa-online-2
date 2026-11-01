@@ -51,7 +51,7 @@ async function loadEditions(){
  const {data,error}=await client.rpc('rifa_listar_edicoes_admin');if(error)throw error;
  editions=data||[];const sel=$('edition-choice');const previous=editionId;
  sel.replaceChildren(...editions.map(e=>{const o=document.createElement('option');o.value=e.id;o.textContent=`${e.titulo} — ${e.status}`;return o;}));
- editionId=editions.some(e=>e.id===previous)?previous:(editions.find(e=>e.titulo==='novo teste'&&e.status==='rascunho')||editions[0])?.id||null;
+ editionId=editions.some(e=>e.id===previous)?previous:(editions.find(e=>e.status==='ativa')||editions[0])?.id||null;
  if(editionId)sel.value=editionId;
  await load();
 }
@@ -66,25 +66,25 @@ async function load(){
    eligible=(data?.elegiveis||[]).map(String);
    results=(data?.resultados||[]).sort((a,b)=>Number(a.rodada)-Number(b.rodada));
  }else{
-   // Consulta de leitura apenas. Sorteio em produção bloqueado nesta versão de teste.
+   // Consulta dos bilhetes pagos e resultados da edição real.
    const [nums,res]=await Promise.all([client.rpc('rifa_elegiveis_edicao',{p_rifa_id:editionId}),client.rpc('rifa_resultados_edicao',{p_rifa_id:editionId})]);
    if(nums.error)throw nums.error;if(res.error)throw res.error;
    eligible=(nums.data||[]).map(x=>String(x.numero));
    results=res.data||[];
  }
  $('count').textContent=eligible.length;
- $('edition-note').textContent=test?'🧪 Edição #008 em rascunho — sorteio de teste habilitado, incluindo bônus.':'🔒 Edição de produção: consulta permitida, sorteio bloqueado nesta versão de teste.';
+ $('edition-note').textContent=test?'🧪 Edição #008 em rascunho — sorteio de teste habilitado, incluindo bônus.':'🏆 Edição real: sorteio habilitado para administrador, com confirmação por rodada.';
  $('numbers').replaceChildren(...eligible.map(n=>{const el=document.createElement('div');el.className='cell';el.textContent=formatTicket(n);return el;}));
  $('rounds').replaceChildren(...[1,2,3].map(rodada=>{const r=results.find(x=>Number(x.rodada)===rodada);const el=document.createElement('div');el.className='round';const title=document.createElement('div');title.textContent=rodada+'º prêmio';const num=document.createElement('strong');num.textContent=r?formatTicket(ticket(r)):'??';const name=document.createElement('div');name.textContent=r?(r.nome_vencedor||'Nome indisponível'):'Aguardando';el.append(title,num,name);return el;}));
  const next=results.length+1;
  $('roundtitle').textContent=next<=3?'Próximo sorteio: '+next+'º prêmio':'Todos os 3 sorteios concluídos';
- $('draw').disabled=spinning||!test||next>3||eligible.length===0;
- $('draw').textContent=!test?'Sorteio bloqueado (teste #008 apenas)':next<=3?'Sortear '+next+'º prêmio':'Sorteios concluídos';
+ $('draw').disabled=spinning||(!test&&current?.status!=='ativa'&&current?.status!=='pausada')||next>3||eligible.length===0;
+ $('draw').textContent=next<=3?'Sortear '+next+'º prêmio':'Sorteios concluídos';
  const last=results[results.length-1];
  $('winner').textContent=last?formatTicket(ticket(last)):'??';
  $('resultlabel').textContent=last?'🏆 '+last.rodada+'º prêmio':'Aguardando sorteio';
  $('winnername').textContent=last?(last.nome_vencedor||'Nome indisponível'):'';
- $('appmsg').textContent=!test?'Somente consulta: esta versão não realiza sorteios em rifas reais.':next>3?'Os três resultados estão registrados.':'Confira os bilhetes e os pagamentos antes de sortear.';
+ $('appmsg').textContent=next>3?'Os três resultados estão registrados.':'Confira os bilhetes e os pagamentos antes de sortear.';
 }
 $('signin').addEventListener('click',async()=>{const b=$('signin');b.disabled=true;$('loginmsg').textContent='Entrando…';try{const {error}=await client.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;const check=await client.rpc('rifa_e_admin');if(check.error)throw check.error;if(check.data!==true)throw new Error('Esta conta não tem permissão de administrador.');$('login').classList.add('hide');$('app').classList.remove('hide');await loadEditions();$('luck-overlay').classList.remove('hide');}catch(e){$('loginmsg').textContent=err(e);await client.auth.signOut();$('app').classList.add('hide');$('login').classList.remove('hide');}finally{b.disabled=false;}});
 $('luck-close').addEventListener('click',()=>{$('luck-overlay').classList.add('hide');});
@@ -92,16 +92,26 @@ $('edition-choice').addEventListener('change',async()=>{editionId=$('edition-cho
 $('refresh').addEventListener('click',async()=>{try{await load()}catch(e){$('appmsg').textContent=err(e)}});
 $('draw').addEventListener('click',async()=>{
  const current=editions.find(e=>e.id===editionId);
- if(!isTest008(current)||spinning||results.length>=3||!eligible.length)return;
+ const test=isTest008(current);
+ if(!current||(!test&&!['ativa','pausada'].includes(current.status))||spinning||results.length>=3||!eligible.length)return;
  const rodada=results.length+1;
- if(!confirm('TESTE EXCLUSIVO #008: registrar DEFINITIVAMENTE o '+rodada+'º sorteio? A primeira rodada já registrada não será repetida.'))return;
+ const selectedId=editionId;
+ const aviso=test
+   ?'TESTE #008: registrar DEFINITIVAMENTE o '+rodada+'º sorteio?'
+   :'SORTEIO REAL — '+current.titulo+'\n\nRegistrar DEFINITIVAMENTE o '+rodada+'º prêmio?\nO resultado será salvo no Supabase e não poderá ser repetido.';
+ if(!confirm(aviso))return;
  spinning=true;$('draw').disabled=true;$('refresh').disabled=true;$('edition-choice').disabled=true;
- $('appmsg').textContent='Registrando o '+rodada+'º sorteio de teste no Supabase…';
+ $('appmsg').textContent='Registrando o '+rodada+'º sorteio no Supabase…';
+ let registered=false;
  try{
-   const {data,error}=await client.rpc('rifa_sortear_teste_008');
+   const {data,error}=test
+     ?await client.rpc('rifa_sortear_teste_008')
+     :await client.rpc('rifa_sortear_edicao',{p_rifa_id:selectedId});
    if(error)throw error;
-   if(Number(data?.rodada)!==rodada)throw new Error('Rodada registrada, mas houve divergência de sequência. Atualize para conferir.');
-   const bilhete=String(data.bilhete_vencedor);
+   registered=true;
+   if(test&&Number(data?.rodada)!==rodada)throw new Error('Rodada registrada, mas houve divergência de sequência.');
+   if(!test&&(!Number.isInteger(data)||data<1))throw new Error('Resultado registrado com retorno inesperado; consulte o histórico antes de prosseguir.');
+   const bilhete=test?String(data.bilhete_vencedor):String(data);
    $('winnername').textContent='';$('resultlabel').textContent='A roleta está girando…';
    $('roulette').classList.add('spinning');
    const inicio=performance.now();
@@ -111,11 +121,18 @@ $('draw').addEventListener('click',async()=>{
    }
    $('roulette').classList.remove('spinning');
    $('winner').textContent=formatTicket(bilhete);
-   $('resultlabel').textContent='🏆 '+rodada+'º prêmio — '+(data.tipo_bilhete==='bonus'?'NÚMERO EXTRA (BÔNUS)':'NÚMERO PAGO');
-   $('winnername').textContent=data.nome_vencedor||'Nome indisponível';
-   $('appmsg').textContent='Resultado salvo no Supabase. Bilhete vencedor: '+formatTicket(bilhete);
- }catch(e){$('roulette').classList.remove('spinning');$('appmsg').textContent=err(e)+' — atualize para consultar o resultado.';}
- finally{spinning=false;$('refresh').disabled=false;$('edition-choice').disabled=false;await load().catch(e=>{$('appmsg').textContent=err(e)});}
+   $('resultlabel').textContent='🏆 '+rodada+'º prêmio — NÚMERO PAGO';
+   if(test){$('winnername').textContent=data.nome_vencedor||'Nome indisponível';}
+   else{
+     const {data:historico,error:historyError}=await client.rpc('rifa_resultados_edicao',{p_rifa_id:selectedId});
+     if(historyError)throw historyError;
+     const result=(historico||[]).find(x=>Number(x.rodada)===rodada);
+     if(!result||Number(result.numero_vencedor)!==Number(data))throw new Error('Resultado salvo, mas a consulta do histórico não confirmou o mesmo número.');
+     $('winnername').textContent=result.nome_vencedor||'Nome indisponível';
+   }
+   $('appmsg').textContent='Resultado registrado no Supabase: '+formatTicket(bilhete);
+ }catch(e){$('roulette').classList.remove('spinning');$('appmsg').textContent=err(e)+(registered?' — Sorteio já pode ter sido registrado. Consulte o histórico; NÃO clique novamente.':' — consulte o histórico antes de tentar novamente.');}
+ finally{spinning=false;$('refresh').disabled=false;$('edition-choice').disabled=false;await load().catch(e=>{$('draw').disabled=true;$('appmsg').textContent='Não foi possível atualizar o histórico: '+err(e)+'. Não sorteie novamente até conferir no Supabase.';});}
 });
 $('signout').addEventListener('click',async()=>{await client.auth.signOut();$('app').classList.add('hide');$('login').classList.remove('hide');$('password').value='';});
 </script></body></html>
