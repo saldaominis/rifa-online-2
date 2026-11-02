@@ -68,8 +68,8 @@ async function load(){
    eligible=(data?.elegiveis||[]).map(String);
    results=(data?.resultados||[]).sort((a,b)=>Number(a.rodada)-Number(b.rodada));
  }else{
-   // Consulta dos bilhetes pagos e resultados da edição real.
-   const [nums,res]=await Promise.all([client.rpc('rifa_elegiveis_edicao',{p_rifa_id:editionId}),client.rpc('rifa_resultados_edicao',{p_rifa_id:editionId})]);
+   // Consulta dos bilhetes pagos, bônus distribuídos e resultados da edição real.
+   const [nums,res]=await Promise.all([client.rpc('rifa_elegiveis_com_bonus',{p_rifa_id:editionId}),client.rpc('rifa_resultados_edicao',{p_rifa_id:editionId})]);
    if(nums.error)throw nums.error;if(res.error)throw res.error;
    eligible=(nums.data||[]).map(eligibleTicket).filter(x=>x!=null).map(String);
    results=res.data||[];
