@@ -66,16 +66,36 @@ function formatTicket(v){
  return /^\d+$/.test(t)?t.padStart(2,'0'):t;
 }
 async function loadEditions(){
- const {data,error}=await client.rpc('rifa_listar_edicoes_admin');if(error)throw error;
- editions=data||[];const sel=$('edition-choice');const previous=editionId;
- sel.replaceChildren(...editions.map(e=>{const o=document.createElement('option');o.value=e.id;o.textContent=`${e.titulo} — ${e.status}`;return o;}));
- editionId=editions.some(e=>e.id===previous)?previous:(editions.find(e=>e.status==='ativa')||editions[0])?.id||null;
+ const {data,error}=await client.rpc('rifa_listar_edicoes_admin');
+ if(error)throw error;
+ const todas=data||[];
+ // A listagem administrativa pode incluir rifas finalizadas/pausadas.
+ // O painel da roleta permite escolher SOMENTE rifas ativas e visíveis.
+ let ocultas=[];
+ const visibilidade=await client.rpc('rifa_ids_ocultas_admin');
+ if(!visibilidade.error && Array.isArray(visibilidade.data)) ocultas=visibilidade.data.map(String);
+ const idsOcultas=new Set(ocultas);
+ editions=todas.filter(e=>e.status==='ativa'&&!idsOcultas.has(String(e.id)));
+ const sel=$('edition-choice');
+ const previous=editionId;
+ sel.replaceChildren(...editions.map(e=>{
+  const o=document.createElement('option');
+  o.value=e.id;
+  const n=e.numero_edicao!=null?String(e.numero_edicao).padStart(3,'0')+' — ':'';
+  o.textContent=n+e.titulo+' — ativa';
+  return o;
+ }));
+ editionId=editions.some(e=>e.id===previous)?previous:(editions[0]?.id||null);
  if(editionId)sel.value=editionId;
+ sel.disabled=editions.length===0;
  await load();
+ if(visibilidade.error && !/function .*does not exist|could not find the function/i.test(err(visibilidade.error))) {
+  $('appmsg').textContent+=' Aviso: não foi possível consultar a lista de rifas ocultas. Rifas finalizadas/pausadas continuam excluídas.';
+ }
 }
 async function load(){
  $('appmsg').textContent='Consultando bilhetes e resultados…';
- if(!editionId){eligible=[];results=[];$('count').textContent='0';$('numbers').replaceChildren();$('rounds').replaceChildren();$('draw').disabled=true;$('appmsg').textContent='Nenhuma edição cadastrada.';return;}
+ if(!editionId){eligible=[];results=[];$('count').textContent='0';$('numbers').replaceChildren();$('rounds').replaceChildren();$('draw').disabled=true;$('appmsg').textContent='Nenhuma rifa ativa e visível disponível para sorteio.';return;}
  const current=editions.find(e=>e.id===editionId);
  const test=isTest008(current);
  if(test){
@@ -99,7 +119,7 @@ async function load(){
  $('rounds').replaceChildren(...[1,2,3].map(rodada=>{const r=results.find(x=>Number(x.rodada)===rodada);const el=document.createElement('div');el.className='round';const title=document.createElement('div');title.textContent=rodada+'º prêmio';const num=document.createElement('strong');num.textContent=r?(ticket(r)!=null?formatTicket(ticket(r)):'Resultado indisponível'):'—';const name=document.createElement('div');name.textContent=r?((r.nome_vencedor||'Nome indisponível')+' · '+ticketKind(r)):'Aguardando';el.append(title,num,name);return el;}));
  const next=results.length+1;
  $('roundtitle').textContent=next<=3?'Próximo sorteio: '+next+'º prêmio':'Todos os 3 sorteios concluídos';
- $('draw').disabled=spinning||(!test&&current?.status!=='ativa'&&current?.status!=='pausada')||next>3||eligible.length===0;
+ $('draw').disabled=spinning||current?.status!=='ativa'||next>3||eligible.length===0;
  $('draw').textContent=next<=3?'Sortear '+next+'º prêmio':'Sorteios concluídos';
  const last=results[results.length-1];
  showSpinTicket(last?ticket(last):'—');
@@ -114,7 +134,7 @@ $('refresh').addEventListener('click',async()=>{try{await load()}catch(e){$('app
 $('draw').addEventListener('click',async()=>{
  const current=editions.find(e=>e.id===editionId);
  const test=isTest008(current);
- if(!current||(!test&&!['ativa','pausada'].includes(current.status))||spinning||results.length>=3||!eligible.length)return;
+ if(!current||current.status!=='ativa'||spinning||results.length>=3||!eligible.length)return;
  const rodada=results.length+1;
  const selectedId=editionId;
  const aviso=test
