@@ -92,6 +92,23 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
 
 /* Vitrine pública — várias rifas independentes */
 .vitrine{padding:22px 0 12px}.vitrine h2{margin:0 0 7px;font-size:1.35rem;color:#f2d17b}.vitrine p{margin:0 0 15px;color:#c4d8c9}.vitrine-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:14px}.vitrine-card{background:#103c2b;border:1px solid #577d5f;border-radius:18px;padding:12px;display:flex;flex-direction:column;gap:10px}.vitrine-card.current{border:2px solid #f2d17b}.vitrine-photo{width:100%;height:175px;object-fit:contain;background:#09271d;border-radius:12px}.vitrine-title{font-weight:900;overflow-wrap:anywhere}.vitrine-meta{color:#c6ddca;font-size:.82rem}.vitrine-choose{border:0;background:#e6c773;color:#163625;border-radius:10px;padding:11px;font-weight:900}.vitrine-choose:disabled{opacity:.6;cursor:default}.vitrine-feedback{padding:9px 0;color:#e6c773;font-size:.85rem}
+
+/* Painel administrativo simplificado */
+.admin-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:2px 0 18px;padding-bottom:14px}
+.admin-nav .tab{min-width:0;white-space:normal;line-height:1.25;padding:11px 7px;font-size:.84rem;border:1px solid #47765b;background:#123e2d;color:#deeee1}
+.admin-nav .tab.active{background:#e6c773;color:#173525;border-color:#f2d17b}
+.admin-heading{font-size:1.08rem;margin:4px 0 8px;color:#f2d17b}
+.admin-action-box{padding:14px;border-radius:13px;border:1px solid #44735a;background:#0a2c21;margin:14px 0}
+.admin-action-box .formrow{margin:12px 0 0}
+.admin-action-box .secondary{font-size:.85rem;padding:11px 8px}
+.admin-section{border:1px solid #4b7a5f;border-radius:14px;background:#0b3023;margin:12px 0;overflow:hidden}
+.admin-section>summary{cursor:pointer;font-weight:850;padding:16px;color:#f1dfa8;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.admin-section>summary:after{content:'⌄';font-size:1.25rem}
+.admin-section[open]>summary:after{content:'⌃'}
+.admin-section>summary::-webkit-details-marker{display:none}
+.admin-section>.admin-photo-controls{margin:0 12px 14px;padding:12px}
+.admin-section>#draw-test-panel{margin:0 12px 14px!important;padding:12px}
+@media(max-width:540px){.admin-nav .tab{font-size:.78rem}.admin-action-box .formrow{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -152,11 +169,24 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
   <div class="modal"><div class="modalhead"><h2 id="admin-heading">🔐 Painel administrativo</h2><button class="close" id="close-admin" aria-label="Fechar">×</button></div>
     <div id="login-view"><p class="hint">Entre com seu usuário cadastrado no Supabase.</p><div class="field"><label for="admin-email">E-mail</label><input type="email" id="admin-email" autocomplete="username"></div><div class="field"><label for="admin-password">Senha</label><input type="password" id="admin-password" autocomplete="current-password" placeholder="Sua senha do Supabase"></div><button class="primary" id="login-btn">Entrar no painel</button><p class="hint" id="login-error" style="color:#ff929b;display:none">Senha incorreta. Tente novamente.</p></div>
     <div id="admin-content" style="display:none">
-      <div class="tabs" style="flex-wrap:wrap"><button class="tab active" data-tab="settings-view">Edições</button><button class="tab" data-tab="records-view">Reservas da edição</button><button class="tab" data-tab="history-view">Vencedores</button></div>
+      <div class="tabs admin-nav" role="tablist" aria-label="Seções administrativas">
+        <button type="button" class="tab active" data-tab="settings-view">🛠 Gerenciar</button>
+        <button type="button" class="tab" data-tab="create-view">➕ Criar rifa</button>
+        <button type="button" class="tab" data-tab="records-view">📋 Reservas</button>
+        <button type="button" class="tab" data-tab="history-view">🏆 Vencedores</button>
+      </div>
       <div class="admin-view active" id="settings-view">
-         <p class="hint">Crie novas edições e ative somente a que deve aparecer ao público. As anteriores ficam no histórico privado.</p>
-         <div class="field"><label for="admin-edition">Edição selecionada</label><select id="admin-edition" class="edition-select"></select></div>
-          <div class="admin-photo-controls">
+        <h3 class="admin-heading">Gerenciar rifas</h3>
+        <p class="hint">Escolha a edição para administrar. Você pode manter mais de uma rifa ativa na vitrine.</p>
+        <div class="field"><label for="admin-edition">Rifa que deseja administrar</label><select id="admin-edition" class="edition-select"></select></div>
+        <div class="admin-action-box">
+          <strong>Publicação da rifa</strong>
+          <p class="hint">Ativar disponibiliza a edição na vitrine sem desativar as demais. Finalizar é irreversível pelo painel.</p>
+<div class="formrow"><button class="secondary" id="activate-edition">Ativar edição selecionada</button><button class="secondary" id="finish-edition">Finalizar edição selecionada</button></div>
+         <p class="hint" id="edition-status">As edições são armazenadas no Supabase. Finalizar é irreversível pelo painel.</p>        </div>
+        <details class="admin-section" open>
+          <summary>📷 Fotos dos prêmios</summary>
+<div class="admin-photo-controls">
             <label for="admin-photo-files" style="display:block;font-weight:850;margin-bottom:8px">📷 Fotos dos prêmios da edição selecionada</label>
             <p class="hint" style="margin:0 0 8px">Até 6 fotos por edição, JPEG, PNG ou WebP, com no máximo 5 MB cada. É possível adicionar e remover fotos mesmo depois de criar a rifa.</p>
             <input type="file" id="admin-photo-files" accept="image/jpeg,image/png,image/webp" multiple>
@@ -164,7 +194,10 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
             <div id="admin-photo-feedback" class="hint" aria-live="polite"></div>
             <div class="admin-photo-list" id="admin-photo-list"></div>
           </div>
-          <div class="admin-photo-controls" id="bonus-config-panel">
+                  </details>
+        <details class="admin-section">
+          <summary>🎟️ Bônus TOP 1</summary>
+<div class="admin-photo-controls" id="bonus-config-panel">
             <strong>🎟️ Bônus TOP 1 — edição selecionada</strong>
             <p class="hint">Configure os bilhetes extras do primeiro colocado. Esta ação não distribui bilhetes, não ativa a rifa e não realiza sorteios.</p>
             <div class="field"><label for="bonus-qty">Quantidade de bilhetes bônus (0 para desativar)</label><input id="bonus-qty" type="number" min="0" max="1000" step="1" value="0"></div>
@@ -193,15 +226,19 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
               <div id="draw-test-result" class="record" style="display:none;margin-top:10px" aria-live="polite"></div>
             </div>
           </div>
-         <div class="field"><label for="raffle-name">Título da nova rifa</label><input id="raffle-name" maxlength="120" placeholder="Ex.: Saldão Minis — Edição 2"></div>
+                 </details>
+      </div>
+      <div class="admin-view" id="create-view">
+        <h3 class="admin-heading">Criar nova rifa</h3>
+        <p class="hint">Preencha os dados da nova rifa. Ela será criada como rascunho e poderá ser ativada depois em <strong>Gerenciar</strong>.</p>
+<div class="field"><label for="raffle-name">Título da nova rifa</label><input id="raffle-name" maxlength="120" placeholder="Ex.: Saldão Minis — Edição 2"></div>
          <div class="formrow"><div class="field"><label for="admin-total">Total de números (1 a 1000)</label><input id="admin-total" type="number" min="1" max="1000" value="100"></div><div class="field"><label for="admin-unit">Preço unitário (R$)</label><input id="admin-unit" type="number" min="0.01" step="0.01" value="1.25"></div></div>
          <div class="formrow"><div class="field"><label for="admin-package-qty">Números por pacote</label><input id="admin-package-qty" type="number" min="2" max="1000" value="10"></div><div class="field"><label for="admin-package-price">Preço do pacote (R$)</label><input id="admin-package-price" type="number" min="0.01" step="0.01" value="10.00"></div></div>
          <div class="field"><label for="admin-whatsapp">WhatsApp com DDI</label><input id="admin-whatsapp" inputmode="numeric" placeholder="5511999999999"></div>
          <div class="field"><label for="admin-pix">Chave PIX</label><input id="admin-pix" placeholder="Chave PIX para pagamento"></div>
          <button class="primary" id="save-settings">Criar nova edição (rascunho)</button>
-         <div class="formrow"><button class="secondary" id="activate-edition">Ativar edição selecionada</button><button class="secondary" id="finish-edition">Finalizar edição selecionada</button></div>
-         <p class="hint" id="edition-status">As edições são armazenadas no Supabase. Finalizar é irreversível pelo painel.</p>
-       </div>
+                 <p class="hint">Depois de criar, volte à aba <strong>Gerenciar</strong> para incluir fotos e ativar a edição.</p>
+      </div>
        <div class="admin-view" id="records-view"><p class="hint">Somente reservas da edição selecionada.</p><div class="records" id="reservation-records"></div><button class="secondary" id="clear-records" style="margin-top:12px">Atualizar reservas</button></div>
       <div class="admin-view" id="history-view"><p class="hint">Três sorteios por edição. Apenas o número vencedor é excluído.</p><div class="records" id="edition-winners"></div></div>
     </div>
@@ -587,7 +624,7 @@ async function distributeTestBonus(){
 async function changeEditionStatus(kind){
  const e=chosenEdition();if(!e)return toast("Selecione uma edição.");
  if(kind==="finalizar"&&!confirm(`FINALIZAR definitivamente a edição "${e.titulo}"? Ela não poderá ser reativada pelo painel.`))return;
- if(kind==="ativar"&&!confirm(`Ativar "${e.titulo}"? A rifa atualmente ativa será pausada.`))return;
+ if(kind==="ativar"&&!confirm(`Ativar "${e.titulo}" na vitrine? As outras rifas ativas continuarão disponíveis.`))return;
  const fn=kind==="ativar"?"rifa_ativar_edicao":"rifa_finalizar_edicao";
  const {error}=await db.rpc(fn,{p_rifa_id:e.id});if(error){toast("Erro: "+error.message);return;}
  toast(kind==="ativar"?"Edição ativada.":"Edição finalizada.");await loadEditions(e.id);await refreshEdition();
