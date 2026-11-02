@@ -179,6 +179,7 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
         <h3 class="admin-heading">Gerenciar rifas</h3>
         <p class="hint">Escolha a edição para administrar. Você pode manter mais de uma rifa ativa na vitrine.</p>
         <div class="field"><label for="admin-edition">Rifa que deseja administrar (número — nome)</label><select id="admin-edition" class="edition-select"></select></div>
+        <label class="hint" style="display:flex;align-items:center;gap:9px;margin:8px 0 17px;cursor:pointer"><input id="show-test-editions" type="checkbox" style="width:17px;height:17px;accent-color:#e6c773"> Mostrar rifas de teste ocultas (007, 008 e 010)</label>
         <div class="admin-action-box">
           <strong>Publicação da rifa</strong>
           <p class="hint">Ativar disponibiliza a edição na vitrine sem desativar as demais. Finalizar é irreversível pelo painel.</p>
@@ -495,9 +496,11 @@ async function login(){
 function chosenEdition(){return edicoesAdmin.find(e=>e.id===edicaoAdminId)||null;}
 async function loadEditions(preferId){
  const {data,error}=await db.rpc("rifa_listar_edicoes_admin");if(error){toast("Falha ao listar edições: "+error.message);return;}
- edicoesAdmin=data||[];
+ const mostrarTestes=$("show-test-editions")?.checked===true;
+ const ocultas=new Set([7,8,10]);
+ edicoesAdmin=(data||[]).filter(e=>mostrarTestes||!ocultas.has(Number(e.numero_edicao)));
  edicaoAdminId=preferId||edicaoAdminId||edicoesAdmin.find(e=>e.status==="ativa")?.id||edicoesAdmin[0]?.id||null;
- if(!edicoesAdmin.some(e=>e.id===edicaoAdminId))edicaoAdminId=edicoesAdmin[0]?.id||null;
+ if(!edicoesAdmin.some(e=>e.id===edicaoAdminId))edicaoAdminId=edicoesAdmin.find(e=>e.status==="ativa")?.id||edicoesAdmin[0]?.id||null;
  const sel=$("admin-edition");sel.replaceChildren();
  for(const e of edicoesAdmin){const o=document.createElement("option");o.value=e.id;o.textContent=`${e.numero_edicao == null ? "SEM Nº" : String(e.numero_edicao).padStart(3,"0")} — ${e.titulo} (${e.status})`;sel.append(o);}
  sel.value=edicaoAdminId||"";
@@ -709,6 +712,7 @@ $("distribute-manual-bonus").addEventListener("click",distributeManualBonus);
 $("upload-photos").addEventListener("click",uploadAdminPhotos);
 $("activate-edition").addEventListener("click",()=>changeEditionStatus("ativar"));
 $("finish-edition").addEventListener("click",()=>changeEditionStatus("finalizar"));
+$("show-test-editions").addEventListener("change",()=>loadEditions());
 $("admin-edition").addEventListener("change",()=>{edicaoAdminId=$("admin-edition").value;loadEditions(edicaoAdminId);});
 $("reserve-btn").addEventListener("click",beginReservation);
 $("send-whatsapp").addEventListener("click",sendWhatsApp);
