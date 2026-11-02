@@ -33,7 +33,9 @@ const client=window.supabase.createClient('https://fornxphycykjadlqsbag.supabase
 const $=id=>document.getElementById(id);let eligible=[];let results=[];let spinning=false;let editionId=null;let editions=[];const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function err(e){return e?.message||String(e)}
 function isTest008(e){return e && e.titulo==='novo teste' && e.status==='rascunho';}
-function ticket(r){return r?.bilhete_vencedor ?? (r?.tipo_bilhete==='bonus'?r?.codigo_bonus:r?.numero_vencedor!=null?String(r.numero_vencedor):'??');}
+function ticket(r){return r?.tipo_bilhete==='bonus' ? (r?.codigo_bonus ?? r?.bilhete_vencedor ?? '??') : (r?.bilhete_vencedor ?? (r?.numero_vencedor!=null?String(r.numero_vencedor):'??'));}
+function ticketKind(r){return r?.tipo_bilhete==='bonus'?'BÔNUS':'NÚMERO PAGO';}
+function eligibleTicket(x){if(x==null)return null;if(typeof x==='string'||typeof x==='number')return String(x);if(x.tipo_bilhete==='bonus')return x.codigo_bonus??x.bilhete??x.numero;if(x.numero!=null)return String(x.numero);return x.codigo_bonus??x.bilhete??null;}
 // Os códigos B001... continuam no banco; apenas a exibição é sequencial.
 // Na edição de teste #008, a rifa possui 100 números originais.
 function formatTicket(v){
@@ -69,20 +71,20 @@ async function load(){
    // Consulta dos bilhetes pagos e resultados da edição real.
    const [nums,res]=await Promise.all([client.rpc('rifa_elegiveis_edicao',{p_rifa_id:editionId}),client.rpc('rifa_resultados_edicao',{p_rifa_id:editionId})]);
    if(nums.error)throw nums.error;if(res.error)throw res.error;
-   eligible=(nums.data||[]).map(x=>String(x.numero));
+   eligible=(nums.data||[]).map(eligibleTicket).filter(x=>x!=null).map(String);
    results=res.data||[];
  }
  $('count').textContent=eligible.length;
  $('edition-note').textContent=test?'🧪 Edição #008 em rascunho — sorteio de teste habilitado, incluindo bônus.':'🏆 Edição real: sorteio habilitado para administrador, com confirmação por rodada.';
  $('numbers').replaceChildren(...eligible.map(n=>{const el=document.createElement('div');el.className='cell';el.textContent=formatTicket(n);return el;}));
- $('rounds').replaceChildren(...[1,2,3].map(rodada=>{const r=results.find(x=>Number(x.rodada)===rodada);const el=document.createElement('div');el.className='round';const title=document.createElement('div');title.textContent=rodada+'º prêmio';const num=document.createElement('strong');num.textContent=r?formatTicket(ticket(r)):'??';const name=document.createElement('div');name.textContent=r?(r.nome_vencedor||'Nome indisponível'):'Aguardando';el.append(title,num,name);return el;}));
+ $('rounds').replaceChildren(...[1,2,3].map(rodada=>{const r=results.find(x=>Number(x.rodada)===rodada);const el=document.createElement('div');el.className='round';const title=document.createElement('div');title.textContent=rodada+'º prêmio';const num=document.createElement('strong');num.textContent=r?formatTicket(ticket(r)):'??';const name=document.createElement('div');name.textContent=r?((r.nome_vencedor||'Nome indisponível')+' · '+ticketKind(r)):'Aguardando';el.append(title,num,name);return el;}));
  const next=results.length+1;
  $('roundtitle').textContent=next<=3?'Próximo sorteio: '+next+'º prêmio':'Todos os 3 sorteios concluídos';
  $('draw').disabled=spinning||(!test&&current?.status!=='ativa'&&current?.status!=='pausada')||next>3||eligible.length===0;
  $('draw').textContent=next<=3?'Sortear '+next+'º prêmio':'Sorteios concluídos';
  const last=results[results.length-1];
  $('winner').textContent=last?formatTicket(ticket(last)):'??';
- $('resultlabel').textContent=last?'🏆 '+last.rodada+'º prêmio':'Aguardando sorteio';
+ $('resultlabel').textContent=last?'🏆 '+last.rodada+'º prêmio — '+ticketKind(last):'Aguardando sorteio';
  $('winnername').textContent=last?(last.nome_vencedor||'Nome indisponível'):'';
  $('appmsg').textContent=next>3?'Os três resultados estão registrados.':'Confira os bilhetes e os pagamentos antes de sortear.';
 }
@@ -109,28 +111,31 @@ $('draw').addEventListener('click',async()=>{
      :await client.rpc('rifa_sortear_edicao',{p_rifa_id:selectedId});
    if(error)throw error;
    registered=true;
-   if(test&&Number(data?.rodada)!==rodada)throw new Error('Rodada registrada, mas houve divergência de sequência.');
-   if(!test&&(!Number.isInteger(data)||data<1))throw new Error('Resultado registrado com retorno inesperado; consulte o histórico antes de prosseguir.');
-   const bilhete=test?String(data.bilhete_vencedor):String(data);
-   $('winnername').textContent='';$('resultlabel').textContent='A roleta está girando…';
-   $('roulette').classList.add('spinning');
-   const inicio=performance.now();
-   while(performance.now()-inicio<4200){
-     $('winner').textContent=formatTicket(eligible[Math.floor(Math.random()*eligible.length)]);
-     await sleep(65+Math.floor((performance.now()-inicio)/30));
-   }
-   $('roulette').classList.remove('spinning');
-   $('winner').textContent=formatTicket(bilhete);
-   $('resultlabel').textContent='🏆 '+rodada+'º prêmio — NÚMERO PAGO';
-   if(test){$('winnername').textContent=data.nome_vencedor||'Nome indisponível';}
-   else{
-     const {data:historico,error:historyError}=await client.rpc('rifa_resultados_edicao',{p_rifa_id:selectedId});
-     if(historyError)throw historyError;
-     const result=(historico||[]).find(x=>Number(x.rodada)===rodada);
-     if(!result||Number(result.numero_vencedor)!==Number(data))throw new Error('Resultado salvo, mas a consulta do histórico não confirmou o mesmo número.');
-     $('winnername').textContent=result.nome_vencedor||'Nome indisponível';
-   }
-   $('appmsg').textContent='Resultado registrado no Supabase: '+formatTicket(bilhete);
+       if(test&&Number(data?.rodada)!==rodada)throw new Error('Rodada registrada, mas houve divergência de sequência.');
+    // O banco pode retornar NULL quando o bilhete vencedor é bônus.
+    // O resultado oficial deve ser lido do histórico da edição, nunca inferido do retorno numérico.
+    const {data:historico,error:historyError}=test
+      ?{data:null,error:null}
+      :await client.rpc('rifa_resultados_edicao',{p_rifa_id:selectedId});
+    if(historyError)throw historyError;
+    const result=test?data:(historico||[]).find(x=>Number(x.rodada)===rodada);
+    if(!result)throw new Error('A chamada foi realizada, mas o histórico ainda não confirmou a rodada. NÃO sorteie novamente sem conferir no Supabase.');
+    const bilhete=ticket(result);
+    if(bilhete==null||bilhete==='??'||bilhete==='')throw new Error('O histórico registrou a rodada, mas não informou um bilhete válido. NÃO sorteie novamente.');
+    if(!test&&result.tipo_bilhete!=='bonus'&&Number.isInteger(data)&&Number(result.numero_vencedor)!==Number(data))
+      throw new Error('O histórico divergiu do retorno do sorteio. NÃO sorteie novamente.');
+    $('winnername').textContent='';$('resultlabel').textContent='A roleta está girando…';
+    $('roulette').classList.add('spinning');
+    const inicio=performance.now();
+    while(performance.now()-inicio<4200){
+      $('winner').textContent=formatTicket(eligible[Math.floor(Math.random()*eligible.length)]);
+      await sleep(65+Math.floor((performance.now()-inicio)/30));
+    }
+    $('roulette').classList.remove('spinning');
+    $('winner').textContent=formatTicket(bilhete);
+    $('resultlabel').textContent='🏆 '+rodada+'º prêmio — '+ticketKind(result);
+    $('winnername').textContent=result.nome_vencedor||'Nome indisponível';
+$('appmsg').textContent='Resultado registrado no Supabase: '+formatTicket(bilhete);
  }catch(e){$('roulette').classList.remove('spinning');$('appmsg').textContent=err(e)+(registered?' — Sorteio já pode ter sido registrado. Consulte o histórico; NÃO clique novamente.':' — consulte o histórico antes de tentar novamente.');}
  finally{spinning=false;$('refresh').disabled=false;$('edition-choice').disabled=false;await load().catch(e=>{$('draw').disabled=true;$('appmsg').textContent='Não foi possível atualizar o histórico: '+err(e)+'. Não sorteie novamente até conferir no Supabase.';});}
 });
