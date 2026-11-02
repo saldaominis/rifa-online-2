@@ -179,7 +179,13 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
         <h3 class="admin-heading">Gerenciar rifas</h3>
         <p class="hint">Escolha a edição para administrar. Você pode manter mais de uma rifa ativa na vitrine.</p>
         <div class="field"><label for="admin-edition">Rifa que deseja administrar (número — nome)</label><select id="admin-edition" class="edition-select"></select></div>
-        <label class="hint" style="display:flex;align-items:center;gap:9px;margin:8px 0 17px;cursor:pointer"><input id="show-test-editions" type="checkbox" style="width:17px;height:17px;accent-color:#e6c773"> Mostrar rifas de teste ocultas (007, 008 e 010)</label>
+        <label class="hint" style="display:flex;align-items:center;gap:9px;margin:8px 0 17px;cursor:pointer"><input id="show-test-editions" type="checkbox" style="width:17px;height:17px;accent-color:#e6c773"> Mostrar rifas ocultas e finalizadas</label>
+        <div class="admin-action-box">
+          <strong>Visibilidade no painel</strong>
+          <p class="hint">Finalizadas ficam ocultas automaticamente. Você também pode ocultar outras edições sem excluir dados.</p>
+          <button type="button" class="secondary" id="toggle-hidden-edition">Ocultar edição selecionada</button>
+          <p class="hint" id="hidden-edition-feedback" aria-live="polite"></p>
+        </div>
         <div class="admin-action-box">
           <strong>Publicação da rifa</strong>
           <p class="hint">Ativar disponibiliza a edição na vitrine sem desativar as demais. Finalizar é irreversível pelo painel.</p>
@@ -494,17 +500,30 @@ async function login(){
  await loadEditions();
 }
 function chosenEdition(){return edicoesAdmin.find(e=>e.id===edicaoAdminId)||null;}
+let idsOcultosAdmin=new Set();
 async function loadEditions(preferId){
- const {data,error}=await db.rpc("rifa_listar_edicoes_admin");if(error){toast("Falha ao listar edições: "+error.message);return;}
- const mostrarTestes=$("show-test-editions")?.checked===true;
- const ocultas=new Set([7,8,10]);
- edicoesAdmin=(data||[]).filter(e=>mostrarTestes||!ocultas.has(Number(e.numero_edicao)));
+ const [edResult,hiddenResult]=await Promise.all([
+   db.rpc("rifa_listar_edicoes_admin"),
+   db.rpc("rifa_ids_ocultas_admin")
+ ]);
+ if(edResult.error){toast("Falha ao listar edições: "+edResult.error.message);return;}
+ if(hiddenResult.error){
+   toast("Falha ao consultar rifas ocultas: "+hiddenResult.error.message);
+   return;
+ }
+ idsOcultosAdmin=new Set(hiddenResult.data||[]);
+ const mostrarOcultas=$("show-test-editions")?.checked===true;
+ edicoesAdmin=(edResult.data||[]).filter(e=>mostrarOcultas||!idsOcultosAdmin.has(e.id));
  edicaoAdminId=preferId||edicaoAdminId||edicoesAdmin.find(e=>e.status==="ativa")?.id||edicoesAdmin[0]?.id||null;
  if(!edicoesAdmin.some(e=>e.id===edicaoAdminId))edicaoAdminId=edicoesAdmin.find(e=>e.status==="ativa")?.id||edicoesAdmin[0]?.id||null;
  const sel=$("admin-edition");sel.replaceChildren();
  for(const e of edicoesAdmin){const o=document.createElement("option");o.value=e.id;o.textContent=`${e.numero_edicao == null ? "SEM Nº" : String(e.numero_edicao).padStart(3,"0")} — ${e.titulo} (${e.status})`;sel.append(o);}
  sel.value=edicaoAdminId||"";
   const chosen=chosenEdition();
+  const hidden=chosen&&idsOcultosAdmin.has(chosen.id);
+  $("toggle-hidden-edition").disabled=!chosen||chosen.status==="finalizada";
+  $("toggle-hidden-edition").textContent=hidden?"Mostrar edição no painel":"Ocultar edição selecionada";
+  $("hidden-edition-feedback").textContent=!chosen?"Selecione uma edição.":chosen.status==="finalizada"?"Edição finalizada: oculta automaticamente, disponível pelo filtro.":hidden?"Esta edição está oculta da lista padrão.":"Esta edição aparece na lista padrão.";
   $("bonus-qty").value=Number(chosen?.bonus_top1_quantidade||0);
   $("bonus-feedback").textContent=chosen ? `Edição selecionada: ${chosen.titulo}. Confirme antes de salvar.` : "Selecione uma edição.";
   $("save-bonus").disabled=!chosen||chosen.status==="finalizada";
@@ -524,6 +543,18 @@ async function loadEditions(preferId){
    $("draw-test-result").style.display="none";
   $("edition-status").textContent=chosenEdition()?`Edição selecionada: ${chosenEdition().titulo} (${chosenEdition().status}). A criação abaixo gera uma NOVA edição.`:"Nenhuma edição cadastrada.";
   await Promise.all([renderRecords(),renderWinners(),renderAdminPhotos()]);
+}
+async function toggleHiddenEdition(){
+ const e=chosenEdition();if(!e)return;
+ if(e.status==="finalizada")return toast("Rifas finalizadas permanecem ocultas.");
+ const currentlyHidden=idsOcultosAdmin.has(e.id);
+ const nextHidden=!currentlyHidden;
+ const note=nextHidden&&e.status==="ativa"?" ATENÇÃO: a rifa ativa continuará aparecendo na vitrine pública. Para tirá-la da vitrine, ela também precisa ser pausada ou finalizada.":"";
+ if(!confirm(`${nextHidden?"Ocultar":"Mostrar"} a edição ${e.numero_edicao} — ${e.titulo} no painel?${note}`))return;
+ const {error}=await db.rpc("rifa_definir_oculta_admin",{p_rifa_id:e.id,p_oculta:nextHidden});
+ if(error)return toast("Não foi possível alterar a visibilidade: "+error.message);
+ toast(nextHidden?"Rifa oculta no painel.":"Rifa visível no painel.");
+ await loadEditions(nextHidden?null:e.id);
 }
 async function saveBonusConfig(){
   const e=chosenEdition();
@@ -713,6 +744,7 @@ $("upload-photos").addEventListener("click",uploadAdminPhotos);
 $("activate-edition").addEventListener("click",()=>changeEditionStatus("ativar"));
 $("finish-edition").addEventListener("click",()=>changeEditionStatus("finalizar"));
 $("show-test-editions").addEventListener("change",()=>loadEditions());
+$("toggle-hidden-edition").addEventListener("click",toggleHiddenEdition);
 $("admin-edition").addEventListener("change",()=>{edicaoAdminId=$("admin-edition").value;loadEditions(edicaoAdminId);});
 $("reserve-btn").addEventListener("click",beginReservation);
 $("send-whatsapp").addEventListener("click",sendWhatsApp);
