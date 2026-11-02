@@ -178,7 +178,7 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
       <div class="admin-view active" id="settings-view">
         <h3 class="admin-heading">Gerenciar rifas</h3>
         <p class="hint">Escolha a edição para administrar. Você pode manter mais de uma rifa ativa na vitrine.</p>
-        <div class="field"><label for="admin-edition">Rifa que deseja administrar</label><select id="admin-edition" class="edition-select"></select></div>
+        <div class="field"><label for="admin-edition">Rifa que deseja administrar (número — nome)</label><select id="admin-edition" class="edition-select"></select></div>
         <div class="admin-action-box">
           <strong>Publicação da rifa</strong>
           <p class="hint">Ativar disponibiliza a edição na vitrine sem desativar as demais. Finalizar é irreversível pelo painel.</p>
@@ -499,7 +499,7 @@ async function loadEditions(preferId){
  edicaoAdminId=preferId||edicaoAdminId||edicoesAdmin.find(e=>e.status==="ativa")?.id||edicoesAdmin[0]?.id||null;
  if(!edicoesAdmin.some(e=>e.id===edicaoAdminId))edicaoAdminId=edicoesAdmin[0]?.id||null;
  const sel=$("admin-edition");sel.replaceChildren();
- for(const e of edicoesAdmin){const o=document.createElement("option");o.value=e.id;o.textContent=`${e.titulo} — ${e.status}`;sel.append(o);}
+ for(const e of edicoesAdmin){const o=document.createElement("option");o.value=e.id;o.textContent=`${e.numero_edicao == null ? "SEM Nº" : String(e.numero_edicao).padStart(3,"0")} — ${e.titulo} (${e.status})`;sel.append(o);}
  sel.value=edicaoAdminId||"";
   const chosen=chosenEdition();
   $("bonus-qty").value=Number(chosen?.bonus_top1_quantidade||0);
