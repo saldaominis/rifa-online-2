@@ -239,8 +239,8 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
         <h3 class="admin-heading">Criar nova rifa</h3>
         <p class="hint">Preencha os dados da nova rifa. Ela será criada como rascunho e poderá ser ativada depois em <strong>Gerenciar</strong>.</p>
 <div class="field"><label for="raffle-name">Título da nova rifa</label><input id="raffle-name" maxlength="120" placeholder="Ex.: Saldão Minis — Edição 2"></div>
-         <div class="formrow"><div class="field"><label for="admin-total">Total de números (1 a 1000)</label><input id="admin-total" type="number" min="1" max="1000" value="100"></div><div class="field"><label for="admin-unit">Preço unitário (R$)</label><input id="admin-unit" type="number" min="0.01" step="0.01" value="1.25"></div></div>
-         <div class="formrow"><div class="field"><label for="admin-package-qty">Números por pacote</label><input id="admin-package-qty" type="number" min="2" max="1000" value="10"></div><div class="field"><label for="admin-package-price">Preço do pacote (R$)</label><input id="admin-package-price" type="number" min="0.01" step="0.01" value="10.00"></div></div>
+         <div class="formrow"><div class="field"><label for="admin-total">Total de números (1 a 1000)</label><input id="admin-total" type="number" min="1" max="1000" value="100"></div><div class="field"><label for="admin-unit">Preço unitário (R$)</label><input id="admin-unit" type="number" min="0" step="0.01" value="1.25"></div></div>
+         <div class="formrow"><div class="field"><label for="admin-package-qty">Números por pacote</label><input id="admin-package-qty" type="number" min="2" max="1000" value="10"></div><div class="field"><label for="admin-package-price">Preço do pacote (R$)</label><input id="admin-package-price" type="number" min="0" step="0.01" value="10.00"></div></div>
          <div class="field"><label for="admin-whatsapp">WhatsApp com DDI</label><input id="admin-whatsapp" inputmode="numeric" placeholder="5511999999999"></div>
          <div class="field"><label for="admin-pix">Chave PIX</label><input id="admin-pix" placeholder="Chave PIX para pagamento"></div>
          <button class="primary" id="save-settings">Criar nova edição (rascunho)</button>
@@ -649,7 +649,7 @@ async function distributeTestBonus(){
  }
  async function createEdition(){
  const title=$("raffle-name").value.trim(),total=Number($("admin-total").value),unit=Math.round(Number($("admin-unit").value)*100),qty=Number($("admin-package-qty").value),pack=Math.round(Number($("admin-package-price").value)*100);
- if(title.length<2||title.length>120||!Number.isInteger(total)||total<1||total>1000||!Number.isInteger(qty)||qty<2||qty>1000||!Number.isSafeInteger(unit)||unit<1||!Number.isSafeInteger(pack)||pack<1){toast("Confira os dados da nova edição.");return;}
+ if(title.length<2||title.length>120||!Number.isInteger(total)||total<1||total>1000||!Number.isInteger(qty)||qty<2||qty>1000||!Number.isSafeInteger(unit)||unit<0||!Number.isSafeInteger(pack)||pack<0){toast("Confira os dados da nova edição.");return;}
  if(!confirm(`Criar uma nova edição chamada "${title}"? Ela ficará em rascunho até ser ativada.`))return;
  const {data,error}=await db.rpc("rifa_criar_edicao",{p_titulo:title,p_total_numeros:total,p_preco_unitario_centavos:unit,p_quantidade_pacote:qty,p_preco_pacote_centavos:pack,p_whatsapp:$("admin-whatsapp").value.trim(),p_chave_pix:$("admin-pix").value.trim()});
  if(error){toast("Erro ao criar: "+error.message);return;}
@@ -709,10 +709,10 @@ async function sendWhatsApp(){
      const {data:id,error}=await db.rpc("rifa_reservar_edicao",{p_rifa_id:edicaoAtiva.id,p_nome:name,p_telefone:phone,p_numeros:nums});
     if(error)throw error;
     const total=calculate(nums.length);
-    const message=`Olá! Fiz uma reserva na *${tituloRifa}* — *Saldão Minis*.\n\n*Reserva:* ${id}\n*Nome:* ${name}\n*Telefone:* ${phone||"Não informado"}\n*Números:* ${nums.join(", ")}\n*Total:* ${money(total)}\n*Chave PIX:* ${CONFIG.chavePix}\n\nVou enviar o comprovante por aqui para conferência.`;
+    const message=total===0 ? `Olá! Quero participar da rifa gratuita *${tituloRifa}* — *Saldão Minis*.\n\n*Reserva:* ${id}\n*Nome:* ${name}\n*Telefone:* ${phone||"Não informado"}\n*Números:* ${nums.join(", ")}\n*Participação gratuita.*` : `Olá! Fiz uma reserva na *${tituloRifa}* — *Saldão Minis*.\n\n*Reserva:* ${id}\n*Nome:* ${name}\n*Telefone:* ${phone||"Não informado"}\n*Números:* ${nums.join(", ")}\n*Total:* ${money(total)}\n*Chave PIX:* ${CONFIG.chavePix}\n\nVou enviar o comprovante por aqui para conferência.`;
     closeModal("customer-modal");
     selecionados.clear();await refreshOccupied();updateSummary();
-    toast("Reserva salva! Envie o comprovante pelo WhatsApp.");
+    toast(total===0 ? "Participação registrada! Confirme pelo WhatsApp." : "Reserva salva! Envie o comprovante pelo WhatsApp.");
     window.location.href=`https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(message)}`;
   }catch(e){toast("Não foi possível reservar: "+e.message);await refreshOccupied();}
   finally{btn.disabled=false;btn.textContent="Continuar no WhatsApp";}
