@@ -159,6 +159,15 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
       <div><div class="small">Números disponíveis agora</div><strong id="available-count">—</strong><span class="small" id="occupied-count"> / 100 no total</span></div>
       <div style="min-width:140px;flex:1;max-width:280px"><div class="small" id="availability-caption">Atualizando...</div><div class="availability-progress" aria-hidden="true"><i id="availability-bar"></i></div></div>
     </div>
+    <div class="formrow" style="margin:12px 0;align-items:end">
+      <div class="field"><label for="random-qty">Quantidade de números</label><input id="random-qty" type="number" min="1" step="1" value="1"></div>
+      <button type="button" class="secondary" id="random-pick" disabled>Escolher números aleatórios</button>
+    </div>
+    <p class="gridnote">A escolha aleatória substitui a seleção atual. Você pode ajustar os números na grade antes de reservar.</p>
+    <p class="gridnote" id="random-feedback" role="status"></p>
+    <div class="formrow" id="number-pages" hidden style="margin:12px 0;align-items:end">
+      <div class="field"><label for="number-page">Faixa de números</label><select id="number-page"></select></div>
+    </div>
     <div class="grid" id="number-grid" aria-label="Grade de números da rifa"></div>
     <p class="gridnote">Números ocupados aparecem em vermelho escuro e não podem ser selecionados. Os números são atualizados pelo banco de dados.</p>
   </section>
@@ -239,7 +248,7 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
         <h3 class="admin-heading">Criar nova rifa</h3>
         <p class="hint">Preencha os dados da nova rifa. Ela será criada como rascunho e poderá ser ativada depois em <strong>Gerenciar</strong>.</p>
 <div class="field"><label for="raffle-name">Título da nova rifa</label><input id="raffle-name" maxlength="120" placeholder="Ex.: Saldão Minis — Edição 2"></div>
-         <div class="formrow"><div class="field"><label for="admin-total">Total de números (1 a 1000)</label><input id="admin-total" type="number" min="1" max="1000" value="100"></div><div class="field"><label for="admin-unit">Preço unitário (R$)</label><input id="admin-unit" type="number" min="0" step="0.01" value="1.25"></div></div>
+         <div class="formrow"><div class="field"><label for="admin-total">Total de números (1 a 10.000)</label><input id="admin-total" type="number" min="1" max="10000" value="100"></div><div class="field"><label for="admin-unit">Preço unitário (R$)</label><input id="admin-unit" type="number" min="0" step="0.01" value="1.25"></div></div>
          <div class="formrow"><div class="field"><label for="admin-package-qty">Números por pacote</label><input id="admin-package-qty" type="number" min="2" max="1000" value="10"></div><div class="field"><label for="admin-package-price">Preço do pacote (R$)</label><input id="admin-package-price" type="number" min="0" step="0.01" value="10.00"></div></div>
          <div class="field"><label for="admin-whatsapp">WhatsApp com DDI</label><input id="admin-whatsapp" inputmode="numeric" placeholder="5511999999999"></div>
          <div class="field"><label for="admin-pix">Chave PIX</label><input id="admin-pix" placeholder="Chave PIX para pagamento"></div>
@@ -279,6 +288,8 @@ const LOGO_DATA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAYAAAD
 const db = window.supabase.createClient("https://fornxphycykjadlqsbag.supabase.co", "sb_publishable_vRXiM8gciZh5p_T0Bt7nkg_4pdVLQmM");
 const $ = id => document.getElementById(id);
 const selecionados = new Set();
+const NUMBERS_PER_PAGE = 100;
+let numberPage = 0, pageTotal = -1, randomPending = false, occupiedRequest = 0;
 let ocupados = [], tituloRifa = CONFIG.nomeRifa, edicaoAtiva = null, edicoesAdmin = [], edicaoAdminId = null;
 let vitrineEdicoes=[], edicaoPublicaId=null;
 const PHOTO_BUCKET = "rifa-premios";
@@ -291,6 +302,10 @@ const sortedSelected = () => [...selecionados].sort((a,b)=>a-b);
 function calculate(qty){if(qty<=0)return 0;const packs=Math.floor(qty/CONFIG.qtdDesconto),rest=qty%CONFIG.qtdDesconto;return packs*CONFIG.precoPacote+rest*CONFIG.precoUnitario;}
 function setEdition(e){
   edicaoAtiva=e||null;selecionados.clear();ocupados=[];occupiedLoaded=false;
+  numberPage=0;occupiedRequest++;
+  $("number-page").value="0";
+  $("random-qty").value="1";
+  $("random-feedback").textContent="";
   publicPhotosSignature="";publicPhotosEditionId=null;
   $("public-prize-panel").style.display="none";
   $("public-prize-gallery").replaceChildren();
@@ -299,7 +314,6 @@ function setEdition(e){
   $("public-top3-panel").style.display="none";
   if(e){tituloRifa=e.titulo;CONFIG.totalNumeros=e.total_numeros;CONFIG.precoUnitario=e.preco_unitario_centavos/100;CONFIG.qtdDesconto=e.quantidade_pacote;CONFIG.precoPacote=e.preco_pacote_centavos/100;CONFIG.whatsapp=e.whatsapp||"";CONFIG.chavePix=e.chave_pix||"";}
   updateLabels();renderGrid();updateSummary();
-  $("reserve-btn").disabled=!e;
   $("number-grid").style.pointerEvents=e?"":"none";
   if(!e){$("hero-title").textContent="Nenhuma rifa ativa no momento";$("number-grid").replaceChildren();$("public-prize-panel").style.display="none";publicPhotosSignature="";publicPhotosEditionId=null;}
   updateAvailability();
@@ -344,9 +358,27 @@ async function refreshEdition(){
 function setEditionFields(e){tituloRifa=e.titulo;CONFIG.totalNumeros=e.total_numeros;CONFIG.precoUnitario=e.preco_unitario_centavos/100;CONFIG.qtdDesconto=e.quantidade_pacote;CONFIG.precoPacote=e.preco_pacote_centavos/100;CONFIG.whatsapp=e.whatsapp||"";CONFIG.chavePix=e.chave_pix||"";updateLabels();updateSummary();}
 function renderGrid(){
   const grid=$("number-grid");grid.innerHTML="";
-  for(let i=1;i<=CONFIG.totalNumeros;i++){
+  const total=edicaoAtiva ? Number(CONFIG.totalNumeros) : 0;
+  const pages=Math.ceil(total/NUMBERS_PER_PAGE);
+  numberPage=Math.min(numberPage,Math.max(0,pages-1));
+  const pageSelect=$("number-page");
+  if(pageTotal!==total){
+    pageTotal=total;
+    pageSelect.replaceChildren();
+    for(let page=0;page<pages;page++){
+      const start=page*NUMBERS_PER_PAGE+1;
+      pageSelect.add(new Option(`${start}–${Math.min(total,start+NUMBERS_PER_PAGE-1)}`,page));
+    }
+  }
+  pageSelect.value=String(numberPage);
+  $("number-pages").style.display=pages<=1?"none":"";
+  $("number-pages").hidden=pages<=1;
+  const taken=new Set(ocupados);
+  const first=numberPage*NUMBERS_PER_PAGE+1;
+  for(let i=first;i<=Math.min(total,first+NUMBERS_PER_PAGE-1);i++){
     const b=document.createElement("button");b.type="button";b.className="number";b.textContent=String(i).padStart(2,"0");b.setAttribute("aria-label",`Número ${i}`);
-    if(ocupados.includes(i)){b.classList.add("taken");b.disabled=true;b.title="Número ocupado";}
+    if(taken.has(i)){b.classList.add("taken");b.disabled=true;b.title="Número ocupado";}
+    else if(!occupiedLoaded)b.disabled=true;
     else {if(selecionados.has(i))b.classList.add("chosen");b.setAttribute("aria-pressed",String(selecionados.has(i)));b.addEventListener("click",()=>{if(selecionados.has(i))selecionados.delete(i);else selecionados.add(i);renderGrid();updateSummary();});}
     grid.appendChild(b);
   }
@@ -354,6 +386,9 @@ function renderGrid(){
 }
 function updateAvailability(){
   const total=edicaoAtiva?CONFIG.totalNumeros:0;
+  const available=Math.max(0,total-ocupados.length);
+  $("random-pick").disabled=!occupiedLoaded||randomPending||available===0;
+  $("random-qty").max=String(Math.max(1,available));
   if(!occupiedLoaded&&total){
     $("available-count").textContent="—";
     $("occupied-count").textContent=` / ${total} no total`;
@@ -362,7 +397,6 @@ function updateAvailability(){
     return;
   }
   const validTaken=new Set(ocupados.filter(n=>Number.isInteger(n)&&n>=1&&n<=total));
-  const available=Math.max(0,total-validTaken.size);
   $("available-count").textContent=String(available);
   $("occupied-count").textContent=` / ${total} no total`;
   $("availability-caption").textContent=`${validTaken.size} ocupado${validTaken.size===1?"":"s"}`;
@@ -476,7 +510,8 @@ function updateSummary(){
   const nums=sortedSelected();$("selected-count").textContent=`${nums.length} selecionado${nums.length===1?"":"s"}`;
   const list=$("selected-list");list.innerHTML="";
   if(!nums.length){list.textContent="Selecione números na grade ao lado.";}
-  else nums.forEach(n=>{const chip=document.createElement("span");chip.className="num-chip";chip.textContent=String(n).padStart(2,"0");list.appendChild(chip);});
+  else nums.slice(0,100).forEach(n=>{const chip=document.createElement("span");chip.className="num-chip";chip.textContent=String(n).padStart(2,"0");list.appendChild(chip);});
+  if(nums.length>100)list.append(`+ ${nums.length-100} números selecionados na grade`);
   $("total-price").textContent=money(calculate(nums.length));$("reserve-btn").disabled=!nums.length||!edicaoAtiva;
 }
 function updateLabels(){
@@ -649,7 +684,7 @@ async function distributeTestBonus(){
  }
  async function createEdition(){
  const title=$("raffle-name").value.trim(),total=Number($("admin-total").value),unit=Math.round(Number($("admin-unit").value)*100),qty=Number($("admin-package-qty").value),pack=Math.round(Number($("admin-package-price").value)*100);
- if(title.length<2||title.length>120||!Number.isInteger(total)||total<1||total>1000||!Number.isInteger(qty)||qty<2||qty>1000||!Number.isSafeInteger(unit)||unit<0||!Number.isSafeInteger(pack)||pack<0){toast("Confira os dados da nova edição.");return;}
+ if(title.length<2||title.length>120||!Number.isInteger(total)||total<1||total>10000||!Number.isInteger(qty)||qty<2||qty>1000||!Number.isSafeInteger(unit)||unit<0||!Number.isSafeInteger(pack)||pack<0){toast("Confira os dados da nova edição.");return;}
  if(!confirm(`Criar uma nova edição chamada "${title}"? Ela ficará em rascunho até ser ativada.`))return;
  const {data,error}=await db.rpc("rifa_criar_edicao",{p_titulo:title,p_total_numeros:total,p_preco_unitario_centavos:unit,p_quantidade_pacote:qty,p_preco_pacote_centavos:pack,p_whatsapp:$("admin-whatsapp").value.trim(),p_chave_pix:$("admin-pix").value.trim()});
  if(error){toast("Erro ao criar: "+error.message);return;}
@@ -693,7 +728,9 @@ async function renderWinners(){
 }
 function beginReservation(){
   if(!edicaoAtiva){toast("Nenhuma rifa ativa.");return;}if(!selecionados.size){toast("Selecione pelo menos um número.");return;}
-  $("confirm-nums").textContent=sortedSelected().map(n=>String(n).padStart(2,"0")).join(", ");
+  const nums=sortedSelected();
+  const preview=nums.slice(0,100).map(n=>String(n).padStart(2,"0")).join(", ");
+  $("confirm-nums").textContent=nums.length>100 ? `${preview} … (${nums.length} números no total)` : preview;
   $("confirm-total").textContent=money(calculate(selecionados.size));
   $("whatsapp-warning").textContent=CONFIG.whatsapp?"":"O WhatsApp de destino ainda não foi configurado. O painel admin permite informar o número.";
   openModal("customer-modal");
@@ -709,25 +746,84 @@ async function sendWhatsApp(){
      const {data:id,error}=await db.rpc("rifa_reservar_edicao",{p_rifa_id:edicaoAtiva.id,p_nome:name,p_telefone:phone,p_numeros:nums});
     if(error)throw error;
     const total=calculate(nums.length);
-    const message=total===0 ? `Olá! Quero participar da rifa gratuita *${tituloRifa}* — *Saldão Minis*.\n\n*Reserva:* ${id}\n*Nome:* ${name}\n*Telefone:* ${phone||"Não informado"}\n*Números:* ${nums.join(", ")}\n*Participação gratuita.*` : `Olá! Fiz uma reserva na *${tituloRifa}* — *Saldão Minis*.\n\n*Reserva:* ${id}\n*Nome:* ${name}\n*Telefone:* ${phone||"Não informado"}\n*Números:* ${nums.join(", ")}\n*Total:* ${money(total)}\n*Chave PIX:* ${CONFIG.chavePix}\n\nVou enviar o comprovante por aqui para conferência.`;
+    const ticketList=nums.length<=100 ? nums.join(", ") : `${nums.length} números (consulte a reserva para ver a lista completa)`;
+    const message=total===0 ? `Olá! Quero participar da rifa gratuita *${tituloRifa}* — *Saldão Minis*.\n\n*Reserva:* ${id}\n*Nome:* ${name}\n*Telefone:* ${phone||"Não informado"}\n*Números:* ${ticketList}\n*Participação gratuita.*` : `Olá! Fiz uma reserva na *${tituloRifa}* — *Saldão Minis*.\n\n*Reserva:* ${id}\n*Nome:* ${name}\n*Telefone:* ${phone||"Não informado"}\n*Números:* ${ticketList}\n*Total:* ${money(total)}\n*Chave PIX:* ${CONFIG.chavePix}\n\nVou enviar o comprovante por aqui para conferência.`;
     closeModal("customer-modal");
-    selecionados.clear();await refreshOccupied();updateSummary();
+    selecionados.clear();renderGrid();updateSummary();refreshOccupied().catch(()=>{});
     toast(total===0 ? "Participação registrada! Confirme pelo WhatsApp." : "Reserva salva! Envie o comprovante pelo WhatsApp.");
     window.location.href=`https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(message)}`;
   }catch(e){toast("Não foi possível reservar: "+e.message);await refreshOccupied();}
   finally{btn.disabled=false;btn.textContent="Continuar no WhatsApp";}
 }
 async function refreshOccupied(){
-  if(!edicaoAtiva)return;
+  if(!edicaoAtiva)return false;
   const currentId=edicaoAtiva.id;
-  const {data,error}=await db.rpc("rifa_ocupados_edicao",{p_rifa_id:currentId});
-  if(currentId!==edicaoAtiva?.id)return;
-  if(error){toast("Falha ao atualizar números: "+error.message);return;}
-  ocupados=(data||[]).map(x=>x.numero);
+  const request=++occupiedRequest;
+  const total=Number(CONFIG.totalNumeros);
+  const numbers=[];
+  let last=0;
+  while(last<total){
+    const {data,error}=await db.rpc("rifa_ocupados_edicao",{p_rifa_id:currentId})
+      .gt("numero",last).lte("numero",total).order("numero").limit(500);
+    if(request!==occupiedRequest||currentId!==edicaoAtiva?.id)return false;
+    if(error){toast("Falha ao atualizar números: "+error.message);return false;}
+    if(!data?.length)break;
+    for(const row of data)numbers.push(Number(row.numero));
+    last=Number(data[data.length-1].numero);
+  }
+  ocupados=[...new Set(numbers)];
   occupiedLoaded=true;
   ocupados.forEach(n=>selecionados.delete(n));
   renderGrid();updateSummary();
+  return true;
 }
+async function pickRandomNumbers(){
+  const qty=$("random-qty").valueAsNumber;
+  const feedback=$("random-feedback");
+  if(!Number.isInteger(qty)||qty<1){
+    feedback.textContent="Informe uma quantidade inteira a partir de 1.";
+    return;
+  }
+  if(randomPending||!edicaoAtiva)return;
+  const edition=edicaoAtiva.id;
+  randomPending=true;
+  updateAvailability();
+  feedback.textContent="Conferindo os números disponíveis…";
+  try{
+    if(!await refreshOccupied()){
+      if(edition===edicaoAtiva?.id)feedback.textContent="A disponibilidade não foi confirmada. Tente novamente.";
+      return;
+    }
+    if(edition!==edicaoAtiva?.id)return;
+    const taken=new Set(ocupados);
+    const pool=[];
+    for(let n=1;n<=CONFIG.totalNumeros;n++)if(!taken.has(n))pool.push(n);
+    if(qty>pool.length){
+      feedback.textContent=`Disponíveis agora: ${pool.length}. Escolha uma quantidade menor.`;
+      return;
+    }
+    selecionados.clear();
+    for(let i=0;i<qty;i++){
+      const j=i+Math.floor(Math.random()*(pool.length-i));
+      [pool[i],pool[j]]=[pool[j],pool[i]];
+      selecionados.add(pool[i]);
+    }
+    numberPage=Math.floor((sortedSelected()[0]-1)/NUMBERS_PER_PAGE);
+    renderGrid();
+    updateSummary();
+    feedback.textContent=qty===1?"1 número selecionado.":`${qty} números selecionados.`;
+  }catch(error){
+    if(edition===edicaoAtiva?.id)feedback.textContent="Falha ao consultar a disponibilidade. Tente novamente.";
+  }finally{
+    randomPending=false;
+    updateAvailability();
+  }
+}
+$("random-pick").addEventListener("click",pickRandomNumbers);
+$("number-page").addEventListener("change",event=>{
+  numberPage=Number(event.target.value);
+  renderGrid();
+});
 $("brand-logo").src=LOGO_DATA;
 $("open-admin").addEventListener("click",openAdmin);
 $("close-admin").addEventListener("click",()=>closeModal("admin-modal"));
