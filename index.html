@@ -75,9 +75,6 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
 .hero-panel .hero-prize-watermark{position:relative;inset:auto;z-index:2;flex:0 0 min(38%,355px);width:min(38%,355px);min-width:0;display:none;flex-direction:column;gap:8px;align-items:stretch;justify-content:center;overflow:visible;pointer-events:auto}
 .hero-panel .hero-prize-main{display:flex;align-items:center;justify-content:center;overflow:hidden;background:#08271edb;border:2px solid #f2d17b70;border-radius:18px;box-shadow:0 14px 35px #0006;min-height:220px;height:300px}
 .hero-panel .hero-prize-main img{display:block;width:100%;height:100%;object-fit:contain;opacity:1;filter:none;mask-image:none;padding:8px}
-.hero-panel .hero-prize-thumbnails{display:flex;gap:7px;max-width:100%;overflow-x:auto;justify-content:center}
-.hero-panel .hero-prize-thumbnails a{display:block;flex:0 0 56px;height:50px;background:#092b20;border:1px solid #c9aa61;border-radius:7px;overflow:hidden}
-.hero-panel .hero-prize-thumbnails img{width:100%;height:100%;object-fit:contain}
 .hero-panel .hero-content{flex:1;min-width:0;max-width:none;z-index:2}
 .hero-panel:after{opacity:.12;pointer-events:none}
 .hero-panel:has(.hero-prize-watermark img):before{opacity:.15}
@@ -109,6 +106,15 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
 .admin-section>.admin-photo-controls{margin:0 12px 14px;padding:12px}
 .admin-section>#draw-test-panel{margin:0 12px 14px!important;padding:12px}
 @media(max-width:540px){.admin-nav .tab{font-size:.78rem}.admin-action-box .formrow{grid-template-columns:1fr}}
+.prize-carousel{position:relative;min-width:0}
+.prize-carousel .vitrine-photo{display:block}
+.prize-carousel-arrow,.prize-carousel-count{position:absolute;z-index:1;color:#fff;background:#08251bf2;border:1px solid #e6c773}
+.prize-carousel-arrow{top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;font-size:1.7rem;line-height:1;padding:0;display:grid;place-items:center}
+.prize-carousel-prev{left:8px}
+.prize-carousel-next{right:8px}
+.prize-carousel-count{bottom:8px;left:50%;transform:translateX(-50%);padding:3px 9px;border-radius:20px;font-size:.8rem;pointer-events:none}
+.prize-carousel-arrow:focus-visible,.prize-carousel-link:focus-visible{outline:3px solid #f2d17b;outline-offset:2px}
+.prize-carousel-link{display:block}
 </style>
 </head>
 <body>
@@ -333,21 +339,69 @@ async function carregarVitrine(){
   }
   await renderVitrine();
 }
-async function renderVitrine(){
- const grid=$('vitrine-grid');grid.replaceChildren();
- for(const e of vitrineEdicoes){
-   const card=document.createElement('article');card.className='vitrine-card'+(e.id===edicaoPublicaId?' current':'');
-   const photo=document.createElement('img');photo.className='vitrine-photo';photo.alt='Prêmio da rifa '+e.titulo;
-   const holder=document.createElement('div');holder.className='vitrine-title';holder.textContent=e.titulo;
-   const meta=document.createElement('div');meta.className='vitrine-meta';meta.textContent=`${e.total_numeros} números · ${money(e.preco_unitario_centavos/100)} por número`;
-   const btn=document.createElement('button');btn.className='vitrine-choose';btn.type='button';btn.textContent=e.id===edicaoPublicaId?'✓ Rifa selecionada':'Ver números desta rifa';btn.disabled=e.id===edicaoPublicaId;
-   btn.addEventListener('click',async()=>{edicaoPublicaId=e.id;history.replaceState(null,'',location.pathname+'?rifa='+encodeURIComponent(e.id)+location.hash);await refreshEdition();document.querySelector('.hero').scrollIntoView({behavior:'smooth',block:'start'});});
-   const {data:photos,error:photoError}=await db.rpc('rifa_fotos_publicas',{p_rifa_id:e.id});
-   if(!photoError&&photos?.length){photo.src=db.storage.from(PHOTO_BUCKET).getPublicUrl(photos[0].caminho).data.publicUrl;}
-   else{photo.style.display='none';}
-   card.append(photo,holder,meta,btn);grid.append(card);
+function createPrizeCarousel(photos,title,featured=false){
+ const urls=photos.map(photo=>db.storage.from(PHOTO_BUCKET).getPublicUrl(photo.caminho).data.publicUrl);
+ const carousel=document.createElement('div');carousel.className='prize-carousel';
+ carousel.setAttribute('role','group');
+ carousel.setAttribute('aria-label','Fotos dos prêmios de '+title);
+ const link=document.createElement('a');
+ link.className=featured?'hero-prize-main prize-carousel-link':'prize-carousel-link';
+ link.target='_blank';link.rel='noopener noreferrer';
+ const image=document.createElement('img');
+ if(!featured){image.className='vitrine-photo';image.loading='lazy';}
+ link.append(image);carousel.append(link);
+ let index=0;
+ const count=document.createElement('span');
+ count.className='prize-carousel-count';count.setAttribute('role','status');
+ function show(){
+   link.href=urls[index];
+   link.setAttribute('aria-label',`Ampliar foto ${index+1} de ${urls.length} de ${title}`);
+   image.src=urls[index];
+   image.alt=`Foto ${index+1} de ${urls.length} dos prêmios de ${title}`;
+   count.textContent=`${index+1} / ${urls.length}`;
  }
- if(!vitrineEdicoes.length){$('vitrine-feedback').textContent='Nenhuma rifa está publicada no momento.';}
+ if(urls.length>1){
+   for(const [step,direction,label,icon] of [[-1,'prev','Foto anterior','‹'],[1,'next','Próxima foto','›']]){
+     const button=document.createElement('button');
+     button.type='button';button.className='prize-carousel-arrow prize-carousel-'+direction;
+     button.setAttribute('aria-label',label);button.textContent=icon;
+     button.addEventListener('click',()=>{
+       index=(index+step+urls.length)%urls.length;
+       show();
+     });
+     carousel.append(button);
+   }
+   carousel.append(count);
+ }
+ show();
+ return carousel;
+}
+let vitrineSignature=null, vitrineRenderRequest=0;
+async function renderVitrine(){
+ const grid=$('vitrine-grid');
+ const request=++vitrineRenderRequest;
+ const selectedId=edicaoPublicaId;
+ const entries=await Promise.all(vitrineEdicoes.map(async e=>{
+   const {data,error}=await db.rpc('rifa_fotos_publicas',{p_rifa_id:e.id});
+   return {e,photos:error?[]:(data||[])};
+ }));
+ if(request!==vitrineRenderRequest)return;
+ const signature=JSON.stringify([selectedId,entries.map(({e,photos})=>[e.id,e.titulo,e.total_numeros,e.preco_unitario_centavos,photos.map(p=>p.caminho)])]);
+ if(signature!==vitrineSignature){
+   const cards=entries.map(({e,photos})=>{
+     const card=document.createElement('article');card.className='vitrine-card'+(e.id===selectedId?' current':'');
+     const holder=document.createElement('div');holder.className='vitrine-title';holder.textContent=e.titulo;
+     const meta=document.createElement('div');meta.className='vitrine-meta';meta.textContent=`${e.total_numeros} números · ${money(e.preco_unitario_centavos/100)} por número`;
+     const btn=document.createElement('button');btn.className='vitrine-choose';btn.type='button';btn.textContent=e.id===selectedId?'✓ Rifa selecionada':'Ver números desta rifa';btn.disabled=e.id===selectedId;
+     btn.addEventListener('click',async()=>{edicaoPublicaId=e.id;history.replaceState(null,'',location.pathname+'?rifa='+encodeURIComponent(e.id)+location.hash);await refreshEdition();document.querySelector('.hero').scrollIntoView({behavior:'smooth',block:'start'});});
+     if(photos.length)card.append(createPrizeCarousel(photos,e.titulo));
+     card.append(holder,meta,btn);
+     return card;
+   });
+   grid.replaceChildren(...cards);
+   vitrineSignature=signature;
+ }
+ if(!entries.length){$('vitrine-feedback').textContent='Nenhuma rifa está publicada no momento.';}
 }
 async function refreshEdition(){
  await carregarVitrine();
@@ -412,18 +466,7 @@ async function refreshPublicPhotos(rifaId){
   publicPhotosEditionId=rifaId;publicPhotosSignature=signature;
   const mark=$("hero-prize-watermark");mark.replaceChildren();
   if(photos.length){
-    const firstUrl=db.storage.from(PHOTO_BUCKET).getPublicUrl(photos[0].caminho).data.publicUrl;
-    const mainLink=document.createElement("a");mainLink.href=firstUrl;mainLink.target="_blank";mainLink.rel="noopener noreferrer";mainLink.className="hero-prize-main";mainLink.title="Ampliar foto do prêmio";
-    const img=document.createElement("img");img.src=firstUrl;img.alt="Prêmio desta rifa";mainLink.append(img);mark.append(mainLink);
-    if(photos.length>1){
-      const thumbs=document.createElement("div");thumbs.className="hero-prize-thumbnails";
-      for(const [i,p] of photos.entries()){
-        const url=db.storage.from(PHOTO_BUCKET).getPublicUrl(p.caminho).data.publicUrl;
-        const a=document.createElement("a");a.href=url;a.target="_blank";a.rel="noopener noreferrer";a.title=`Ampliar foto ${i+1}`;
-        const ti=document.createElement("img");ti.src=url;ti.alt=`Foto ${i+1} do prêmio`;ti.loading="lazy";a.append(ti);thumbs.append(a);
-      }
-      mark.append(thumbs);
-    }
+    mark.append(createPrizeCarousel(photos,edicaoAtiva.titulo,true));
     mark.style.display="flex";
   } else {mark.style.display="none";}
   $("public-prize-gallery").replaceChildren();
