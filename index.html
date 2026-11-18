@@ -274,7 +274,7 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
          <button class="primary" id="save-settings">Criar nova edição (rascunho)</button>
                  <p class="hint">Depois de criar, volte à aba <strong>Gerenciar</strong> para incluir fotos e ativar a edição.</p>
       </div>
-       <div class="admin-view" id="records-view"><p class="hint">Somente reservas da edição selecionada. Reservas com o mesmo telefone são somadas no resumo do participante.</p><h3 class="admin-heading">Participantes e números reservados</h3><div class="records" id="participant-counts"></div><h3 class="admin-heading" style="margin-top:20px">Reservas individuais</h3><div class="records" id="reservation-records"></div><button class="secondary" id="clear-records" style="margin-top:12px">Atualizar reservas</button></div>
+       <div class="admin-view" id="records-view"><button class="secondary" id="clear-records" style="width:100%;margin:0 0 12px">↻ Atualizar reservas</button><p class="hint">Somente reservas da edição selecionada. Reservas com o mesmo telefone são somadas no resumo do participante.</p><details class="admin-section"><summary>👥 Participantes e números reservados</summary><div class="admin-photo-controls"><div class="records" id="participant-counts"></div></div></details><details class="admin-section"><summary>📋 Reservas individuais</summary><div class="admin-photo-controls"><div class="records" id="reservation-records"></div></div></details></div>
       <div class="admin-view" id="history-view"><p class="hint">Três sorteios por edição. Apenas o número vencedor é excluído.</p><div class="records" id="edition-winners"></div></div>
     </div>
   </div>
