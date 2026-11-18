@@ -122,6 +122,13 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
 #vitrine-content[hidden]{display:none}
 .gridpanel .summary{margin-top:22px}
 #reserve-btn{display:block;width:100%;min-height:58px;font-size:1.1rem;margin-top:16px}
+.mobile-reserve-bar{display:none}
+.mobile-reserve-bar[hidden]{display:none!important}
+body.has-selection{padding-bottom:104px}
+body.has-selection .mobile-reserve-bar{position:fixed;left:50%;bottom:0;z-index:40;transform:translateX(-50%);width:min(calc(100% - 32px),680px);display:flex;align-items:center;gap:16px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:#071c15f5;border:1px solid #d5ad5266;border-bottom:0;border-radius:16px 16px 0 0;box-shadow:0 -8px 28px #0005}
+.mobile-reserve-meta{min-width:100px;flex:1;display:grid;gap:3px}.mobile-reserve-meta span{font-size:.82rem;color:#bdd5c6}.mobile-reserve-meta strong{font-size:1.05rem;color:#f2d17b}
+.mobile-reserve-button{display:flex;flex:0 0 240px;min-height:56px;align-items:center;justify-content:center;gap:6px;flex-direction:column;border:0;border-radius:13px;background:linear-gradient(135deg,#0aa878,#087a57);color:#fff;font:inherit;font-weight:900;box-shadow:0 4px 0 #07553e}.mobile-reserve-button small{font-size:.78rem;font-weight:750;color:#e2fff4}.mobile-reserve-button:disabled{opacity:.55;box-shadow:none}
+@media(max-width:540px){body.has-selection{padding-bottom:104px}body.has-selection .mobile-reserve-bar{left:0;right:0;transform:none;width:auto;gap:12px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));border-left:0;border-right:0;border-radius:0}.mobile-reserve-meta{min-width:82px;flex:0 0 auto}.mobile-reserve-meta span{font-size:.75rem}.mobile-reserve-meta strong{font-size:1rem}.mobile-reserve-button{flex:1}}
 </style>
 </head>
 <body>
@@ -184,6 +191,11 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
   </section>
 </main>
 <footer class="footer"><div class="wrap"><strong>Saldão Minis</strong> · Feito para quem ama miniaturas 🏁<br>Participe com responsabilidade e confira as regras da campanha.</div></footer>
+
+<div class="mobile-reserve-bar" id="mobile-reserve-bar" hidden aria-label="Resumo da reserva">
+  <div class="mobile-reserve-meta"><span id="mobile-selected-count">0 números</span><strong id="mobile-total-price">R$ 0,00</strong></div>
+  <button class="mobile-reserve-button" id="mobile-reserve-btn" type="button" disabled><span>Reservar</span><small id="mobile-button-price">R$ 0,00</small></button>
+</div>
 
 <div class="modal-backdrop" id="admin-modal" role="dialog" aria-modal="true" aria-labelledby="admin-heading">
   <div class="modal"><div class="modalhead"><h2 id="admin-heading">🔐 Painel administrativo</h2><button class="close" id="close-admin" aria-label="Fechar">×</button></div>
@@ -549,7 +561,13 @@ function updateSummary(){
   if(!nums.length){list.textContent="Selecione números na grade acima.";}
   else nums.slice(0,100).forEach(n=>{const chip=document.createElement("span");chip.className="num-chip";chip.textContent=String(n).padStart(2,"0");list.appendChild(chip);});
   if(nums.length>100)list.append(`+ ${nums.length-100} números selecionados na grade`);
-  $("total-price").textContent=money(calculate(nums.length));$("reserve-btn").disabled=!nums.length||!edicaoAtiva;
+  const total=money(calculate(nums.length));
+  $("total-price").textContent=total;$("reserve-btn").disabled=!nums.length||!edicaoAtiva;
+  $("mobile-selected-count").textContent=`${nums.length} número${nums.length===1?"":"s"}`;
+  $("mobile-total-price").textContent=total;$("mobile-button-price").textContent=total;
+  $("mobile-reserve-btn").disabled=!nums.length||!edicaoAtiva;
+  $("mobile-reserve-bar").hidden=!nums.length||!edicaoAtiva;
+  document.body.classList.toggle("has-selection",!!nums.length&&!!edicaoAtiva);
 }
 function updateLabels(){
   $("hero-title").innerHTML=`${escapeHTML(tituloRifa)} <em>pode ser sua!</em>`;
@@ -902,6 +920,7 @@ $("toggle-vitrine").addEventListener("click",()=>{
   button.textContent=content.hidden?"Mostrar vitrine ▾":"Ocultar vitrine ▴";
 });
 $("reserve-btn").addEventListener("click",beginReservation);
+$("mobile-reserve-btn").addEventListener("click",beginReservation);
 $("send-whatsapp").addEventListener("click",sendWhatsApp);
 document.querySelectorAll(".tab").forEach(tab=>tab.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t===tab));document.querySelectorAll(".admin-view").forEach(v=>v.classList.toggle("active",v.id===tab.dataset.tab));if(tab.dataset.tab==="records-view")renderRecords();if(tab.dataset.tab==="history-view")renderWinners();}));
 $("clear-records").addEventListener("click",renderRecords);
