@@ -120,11 +120,6 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
 .vitrine-heading h2{margin:0}
 #toggle-vitrine{min-height:46px;padding:10px 18px;font-weight:800}
 #vitrine-content[hidden]{display:none}
-#number-pages{display:block;padding:18px;background:#153f2e;border:2px solid #e6c773;border-radius:14px;box-shadow:0 4px 16px #0003}
-#number-pages .field{width:100%;margin:0}
-#number-pages label{display:block;color:#ffe39a;font-size:1.08rem;font-weight:900;margin-bottom:10px}
-#number-page{display:block;width:100%;min-height:62px;padding:14px 18px;background:#f5df9a;color:#123725;border:2px solid #fff0c1;border-radius:10px;font-family:inherit;font-size:1.25rem;font-weight:800;cursor:pointer}
-#number-page:focus-visible{outline:3px solid #fff;outline-offset:3px}
 .gridpanel .summary{margin-top:22px}
 #reserve-btn{display:block;width:100%;min-height:58px;font-size:1.1rem;margin-top:16px}
 </style>
@@ -177,9 +172,6 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
     </div>
     <p class="gridnote">A escolha aleatória substitui a seleção atual. Você pode ajustar os números na grade antes de reservar.</p>
     <p class="gridnote" id="random-feedback" role="status"></p>
-    <div class="formrow" id="number-pages" hidden style="margin:12px 0;align-items:end">
-      <div class="field"><label for="number-page">Faixa de números</label><select id="number-page"></select></div>
-    </div>
     <div class="grid" id="number-grid" aria-label="Grade de números da rifa"></div>
     <p class="gridnote">Números ocupados aparecem em vermelho escuro e não podem ser selecionados. Os números são atualizados pelo banco de dados.</p>
     <div class="summary">
@@ -307,8 +299,7 @@ const LOGO_DATA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAYAAAD
 const db = window.supabase.createClient("https://fornxphycykjadlqsbag.supabase.co", "sb_publishable_vRXiM8gciZh5p_T0Bt7nkg_4pdVLQmM");
 const $ = id => document.getElementById(id);
 const selecionados = new Set();
-const NUMBERS_PER_PAGE = 100;
-let numberPage = 0, pageTotal = -1, randomPending = false, occupiedRequest = 0;
+let randomPending = false, occupiedRequest = 0;
 let ocupados = [], tituloRifa = CONFIG.nomeRifa, edicaoAtiva = null, edicoesAdmin = [], edicaoAdminId = null;
 let vitrineEdicoes=[], edicaoPublicaId=null;
 const PHOTO_BUCKET = "rifa-premios";
@@ -321,8 +312,7 @@ const sortedSelected = () => [...selecionados].sort((a,b)=>a-b);
 function calculate(qty){if(qty<=0)return 0;const packs=Math.floor(qty/CONFIG.qtdDesconto),rest=qty%CONFIG.qtdDesconto;return packs*CONFIG.precoPacote+rest*CONFIG.precoUnitario;}
 function setEdition(e){
   edicaoAtiva=e||null;selecionados.clear();ocupados=[];occupiedLoaded=false;
-  numberPage=0;occupiedRequest++;
-  $("number-page").value="0";
+  occupiedRequest++;
   $("random-qty").value="1";
   $("random-feedback").textContent="";
   publicPhotosSignature="";publicPhotosEditionId=null;
@@ -426,23 +416,8 @@ function setEditionFields(e){tituloRifa=e.titulo;CONFIG.totalNumeros=e.total_num
 function renderGrid(){
   const grid=$("number-grid");grid.innerHTML="";
   const total=edicaoAtiva ? Number(CONFIG.totalNumeros) : 0;
-  const pages=Math.ceil(total/NUMBERS_PER_PAGE);
-  numberPage=Math.min(numberPage,Math.max(0,pages-1));
-  const pageSelect=$("number-page");
-  if(pageTotal!==total){
-    pageTotal=total;
-    pageSelect.replaceChildren();
-    for(let page=0;page<pages;page++){
-      const start=page*NUMBERS_PER_PAGE+1;
-      pageSelect.add(new Option(`${start}–${Math.min(total,start+NUMBERS_PER_PAGE-1)}`,page));
-    }
-  }
-  pageSelect.value=String(numberPage);
-  $("number-pages").style.display=pages<=1?"none":"";
-  $("number-pages").hidden=pages<=1;
   const taken=new Set(ocupados);
-  const first=numberPage*NUMBERS_PER_PAGE+1;
-  for(let i=first;i<=Math.min(total,first+NUMBERS_PER_PAGE-1);i++){
+  for(let i=1;i<=total;i++){
     const b=document.createElement("button");b.type="button";b.className="number";b.textContent=String(i).padStart(2,"0");b.setAttribute("aria-label",`Número ${i}`);
     if(taken.has(i)){b.classList.add("taken");b.disabled=true;b.title="Número ocupado";}
     else if(!occupiedLoaded)b.disabled=true;
@@ -891,7 +866,6 @@ async function pickRandomNumbers(){
       [pool[i],pool[j]]=[pool[j],pool[i]];
       selecionados.add(pool[i]);
     }
-    numberPage=Math.floor((sortedSelected()[0]-1)/NUMBERS_PER_PAGE);
     renderGrid();
     updateSummary();
     feedback.textContent=qty===1?"1 número selecionado.":`${qty} números selecionados.`;
@@ -903,10 +877,6 @@ async function pickRandomNumbers(){
   }
 }
 $("random-pick").addEventListener("click",pickRandomNumbers);
-$("number-page").addEventListener("change",event=>{
-  numberPage=Number(event.target.value);
-  renderGrid();
-});
 $("brand-logo").src=LOGO_DATA;
 $("open-admin").addEventListener("click",openAdmin);
 $("close-admin").addEventListener("click",()=>closeModal("admin-modal"));
