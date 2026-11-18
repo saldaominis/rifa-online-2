@@ -122,6 +122,7 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
 #vitrine-content[hidden]{display:none}
 .gridpanel .summary{margin-top:22px}
 #reserve-btn{display:block;width:100%;min-height:58px;font-size:1.1rem;margin-top:16px}
+.quantity-picker{margin:12px 0 8px;padding:14px;background:#09291e;border:1px solid #32624c;border-radius:14px}.quantity-picker .field-label{font-weight:850;color:#f2d17b;margin-bottom:8px}.quick-add-buttons{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.quick-add-button{min-height:48px;border:1px solid #548368;border-radius:10px;background:#20523d;color:#f2d17b;font:inherit;font-weight:900;cursor:pointer}.quick-add-button:hover:not(:disabled){filter:brightness(1.15)}.quick-add-button:disabled{opacity:.45;cursor:not-allowed}
 .mobile-reserve-bar{display:none}
 .mobile-reserve-bar[hidden]{display:none!important}
 body.has-selection{padding-bottom:104px}
@@ -173,11 +174,19 @@ body.has-selection .mobile-reserve-bar{position:fixed;left:50%;bottom:0;z-index:
       <div><div class="small">Números disponíveis agora</div><strong id="available-count">—</strong><span class="small" id="occupied-count"> / 100 no total</span></div>
       <div style="min-width:140px;flex:1;max-width:280px"><div class="small" id="availability-caption">Atualizando...</div><div class="availability-progress" aria-hidden="true"><span class="available-segment" id="available-bar"></span><span class="occupied-segment" id="occupied-bar"></span></div></div>
     </div>
-    <div class="formrow" style="margin:12px 0;align-items:end">
-      <div class="field"><label for="random-qty">Quantidade de números</label><input id="random-qty" type="number" min="1" step="1" value="1"></div>
-      <button type="button" class="secondary" id="random-pick" disabled>Escolher números aleatórios</button>
+    <div class="quantity-picker">
+      <div class="field-label">Adicionar números à seleção</div>
+      <div class="quick-add-buttons" role="group" aria-label="Atalhos para adicionar números">
+        <button type="button" class="quick-add-button" data-add-quantity="1" disabled>+1</button>
+        <button type="button" class="quick-add-button" data-add-quantity="10" disabled>+10</button>
+        <button type="button" class="quick-add-button" data-add-quantity="50" disabled>+50</button>
+      </div>
+      <div class="formrow" style="margin:12px 0;align-items:end">
+        <div class="field"><label for="random-qty">Outra quantidade</label><input id="random-qty" type="number" min="1" step="1" value="1"></div>
+        <button type="button" class="secondary" id="random-pick" disabled>Adicionar quantidade</button>
+      </div>
     </div>
-    <p class="gridnote">A escolha aleatória substitui a seleção atual. Você pode ajustar os números na grade antes de reservar.</p>
+    <p class="gridnote">Os atalhos adicionam números livres à seleção. Se houver menos números disponíveis que o solicitado, serão adicionados apenas os restantes.</p>
     <p class="gridnote" id="random-feedback" role="status"></p>
     <div class="grid" id="number-grid" aria-label="Grade de números da rifa"></div>
     <p class="gridnote">Números ocupados aparecem em vermelho escuro e não podem ser selecionados. Os números são atualizados pelo banco de dados.</p>
@@ -442,8 +451,10 @@ function updateAvailability(){
   const total=edicaoAtiva?CONFIG.totalNumeros:0;
   const validTaken=new Set(ocupados.filter(n=>Number.isInteger(n)&&n>=1&&n<=total));
   const occupied=validTaken.size;
-  const available=Math.max(0,total-occupied);
+  const selected=[...selecionados].filter(n=>Number.isInteger(n)&&n>=1&&n<=total&&!validTaken.has(n)).length;
+  const available=Math.max(0,total-occupied-selected);
   $("random-pick").disabled=!occupiedLoaded||randomPending||available===0;
+  document.querySelectorAll(".quick-add-button").forEach(button=>{button.disabled=!occupiedLoaded||randomPending||available===0;});
   $("random-qty").max=String(Math.max(1,available));
   if(!occupiedLoaded&&total){
     $("available-count").textContent="—";
@@ -853,8 +864,8 @@ async function refreshOccupied(){
   renderGrid();updateSummary();
   return true;
 }
-async function pickRandomNumbers(){
-  const qty=$("random-qty").valueAsNumber;
+async function pickRandomNumbers(requestedQty=$("random-qty").valueAsNumber){
+  const qty=requestedQty;
   const feedback=$("random-feedback");
   if(!Number.isInteger(qty)||qty<1){
     feedback.textContent="Informe uma quantidade inteira a partir de 1.";
@@ -873,20 +884,22 @@ async function pickRandomNumbers(){
     if(edition!==edicaoAtiva?.id)return;
     const taken=new Set(ocupados);
     const pool=[];
-    for(let n=1;n<=CONFIG.totalNumeros;n++)if(!taken.has(n))pool.push(n);
-    if(qty>pool.length){
-      feedback.textContent=`Disponíveis agora: ${pool.length}. Escolha uma quantidade menor.`;
+    for(let n=1;n<=CONFIG.totalNumeros;n++)if(!taken.has(n)&&!selecionados.has(n))pool.push(n);
+    const addCount=Math.min(qty,pool.length);
+    if(!addCount){
+      feedback.textContent="Não há mais números disponíveis para adicionar.";
       return;
     }
-    selecionados.clear();
-    for(let i=0;i<qty;i++){
+    for(let i=0;i<addCount;i++){
       const j=i+Math.floor(Math.random()*(pool.length-i));
       [pool[i],pool[j]]=[pool[j],pool[i]];
       selecionados.add(pool[i]);
     }
     renderGrid();
     updateSummary();
-    feedback.textContent=qty===1?"1 número selecionado.":`${qty} números selecionados.`;
+    feedback.textContent=addCount<qty
+      ?`Restavam ${addCount} números disponíveis. Foram adicionados apenas esses ${addCount}.`
+      :`${addCount} número${addCount===1?" adicionado":"s adicionados"} à seleção.`;
   }catch(error){
     if(edition===edicaoAtiva?.id)feedback.textContent="Falha ao consultar a disponibilidade. Tente novamente.";
   }finally{
@@ -894,7 +907,8 @@ async function pickRandomNumbers(){
     updateAvailability();
   }
 }
-$("random-pick").addEventListener("click",pickRandomNumbers);
+$("random-pick").addEventListener("click",()=>pickRandomNumbers());
+document.querySelectorAll(".quick-add-button").forEach(button=>button.addEventListener("click",()=>pickRandomNumbers(Number(button.dataset.addQuantity))));
 $("brand-logo").src=LOGO_DATA;
 $("open-admin").addEventListener("click",openAdmin);
 $("close-admin").addEventListener("click",()=>closeModal("admin-modal"));
