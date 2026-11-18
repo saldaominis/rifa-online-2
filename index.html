@@ -45,8 +45,9 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
 .availability{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:0 0 15px;border:1px solid #456b52;border-radius:14px;padding:13px 15px;background:#09291e}
 .availability strong{color:#f2d17b;font-size:1.5rem;font-variant-numeric:tabular-nums}
 .availability .small{color:#c6dfcc;font-size:.8rem}
-.availability-progress{height:8px;background:#204735;border-radius:100px;overflow:hidden;margin:8px 0 0}
-.availability-progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#88e7ab,#f2d17b);transition:width .3s}
+.availability-progress{display:flex;height:8px;background:#204735;border-radius:100px;overflow:hidden;margin:8px 0 0}
+.availability-progress .available-segment{display:block;height:100%;width:0;background:linear-gradient(90deg,#5ecb83,#9be7ac);transition:width .3s}
+.availability-progress .occupied-segment{display:block;height:100%;width:0;background:linear-gradient(90deg,#c39b49,#f2d17b);transition:width .3s}
 .admin-photo-controls{padding:12px;margin:15px 0;border:1px solid #3d7757;border-radius:13px;background:#0b3022}
 .admin-photo-controls input[type=file]{max-width:100%;color:#e7f2ea;padding:9px;background:#0a2a1e;border:1px solid #46745b;border-radius:8px}
 .admin-photo-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:10px;margin-top:12px}
@@ -168,7 +169,7 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
     </div>
     <div class="availability" aria-live="polite">
       <div><div class="small">Números disponíveis agora</div><strong id="available-count">—</strong><span class="small" id="occupied-count"> / 100 no total</span></div>
-      <div style="min-width:140px;flex:1;max-width:280px"><div class="small" id="availability-caption">Atualizando...</div><div class="availability-progress" aria-hidden="true"><i id="availability-bar"></i></div></div>
+      <div style="min-width:140px;flex:1;max-width:280px"><div class="small" id="availability-caption">Atualizando...</div><div class="availability-progress" aria-hidden="true"><span class="available-segment" id="available-bar"></span><span class="occupied-segment" id="occupied-bar"></span></div></div>
     </div>
     <div class="formrow" style="margin:12px 0;align-items:end">
       <div class="field"><label for="random-qty">Quantidade de números</label><input id="random-qty" type="number" min="1" step="1" value="1"></div>
@@ -273,7 +274,7 @@ body:before{background-image:linear-gradient(120deg,transparent 0 47%,#d5ad52 47
          <button class="primary" id="save-settings">Criar nova edição (rascunho)</button>
                  <p class="hint">Depois de criar, volte à aba <strong>Gerenciar</strong> para incluir fotos e ativar a edição.</p>
       </div>
-       <div class="admin-view" id="records-view"><p class="hint">Somente reservas da edição selecionada.</p><div class="records" id="reservation-records"></div><button class="secondary" id="clear-records" style="margin-top:12px">Atualizar reservas</button></div>
+       <div class="admin-view" id="records-view"><p class="hint">Somente reservas da edição selecionada. Reservas com o mesmo telefone são somadas no resumo do participante.</p><h3 class="admin-heading">Participantes e números reservados</h3><div class="records" id="participant-counts"></div><h3 class="admin-heading" style="margin-top:20px">Reservas individuais</h3><div class="records" id="reservation-records"></div><button class="secondary" id="clear-records" style="margin-top:12px">Atualizar reservas</button></div>
       <div class="admin-view" id="history-view"><p class="hint">Três sorteios por edição. Apenas o número vencedor é excluído.</p><div class="records" id="edition-winners"></div></div>
     </div>
   </div>
@@ -452,21 +453,27 @@ function renderGrid(){
 }
 function updateAvailability(){
   const total=edicaoAtiva?CONFIG.totalNumeros:0;
-  const available=Math.max(0,total-ocupados.length);
+  const validTaken=new Set(ocupados.filter(n=>Number.isInteger(n)&&n>=1&&n<=total));
+  const occupied=validTaken.size;
+  const available=Math.max(0,total-occupied);
   $("random-pick").disabled=!occupiedLoaded||randomPending||available===0;
   $("random-qty").max=String(Math.max(1,available));
   if(!occupiedLoaded&&total){
     $("available-count").textContent="—";
     $("occupied-count").textContent=` / ${total} no total`;
     $("availability-caption").textContent="Consultando reservas...";
-    $("availability-bar").style.width="0%";
+    $("available-bar").style.width="0%";
+    $("occupied-bar").style.width="0%";
     return;
   }
-  const validTaken=new Set(ocupados.filter(n=>Number.isInteger(n)&&n>=1&&n<=total));
   $("available-count").textContent=String(available);
   $("occupied-count").textContent=` / ${total} no total`;
-  $("availability-caption").textContent=`${validTaken.size} ocupado${validTaken.size===1?"":"s"}`;
-  $("availability-bar").style.width=total?`${100*available/total}%`:"0%";
+  const availablePercent=total?100*available/total:0;
+  const occupiedPercent=total?100*occupied/total:0;
+  const pct=value=>`${Number(value.toFixed(1)).toLocaleString("pt-BR",{maximumFractionDigits:1})}%`;
+  $("availability-caption").textContent=`${occupied} ocupado${occupied===1?"":"s"} (${pct(occupiedPercent)}) · ${available} ${available===1?"disponível":"disponíveis"} (${pct(availablePercent)})`;
+  $("available-bar").style.width=`${availablePercent}%`;
+  $("occupied-bar").style.width=`${occupiedPercent}%`;
 }
 async function refreshPublicPhotos(rifaId){
   const {data,error}=await db.rpc("rifa_fotos_publicas",{p_rifa_id:rifaId});
@@ -754,12 +761,33 @@ async function changeEditionStatus(kind){
  toast(kind==="ativar"?"Edição ativada.":"Edição finalizada.");await loadEditions(e.id);await refreshEdition();
 }
 async function renderRecords(){
- const area=$("reservation-records");area.textContent="Carregando...";
+ const area=$("reservation-records"),summary=$("participant-counts");area.textContent="Carregando...";summary.textContent="Carregando...";
  if(!edicaoAdminId){area.textContent="Selecione uma edição.";return;}
  const {data,error}=await db.rpc("rifa_reservas_edicao_admin",{p_rifa_id:edicaoAdminId});
- if(error){area.textContent="Não foi possível carregar: "+error.message;return;}
- area.replaceChildren();if(!(data||[]).length){area.textContent="Nenhuma reserva nesta edição.";return;}
- for(const r of data){
+ if(error){area.textContent="Não foi possível carregar: "+error.message;summary.textContent="Não foi possível carregar o resumo.";return;}
+ const reservations=data||[];area.replaceChildren();summary.replaceChildren();
+ if(!reservations.length){area.textContent="Nenhuma reserva nesta edição.";summary.textContent="Ainda não há participantes com reservas.";return;}
+ const participants=new Map();
+ for(const r of reservations){
+  // Telefones são agrupados pelos dígitos, então formatações diferentes do mesmo número coincidem.
+  // Sem telefone, cada reserva permanece em um grupo próprio para não juntar pessoas distintas.
+  const digits=String(r.telefone||"").replace(/\D/g,"");
+  const key=digits?`tel:${digits}`:`reserva:${r.id}`;
+  if(!participants.has(key))participants.set(key,{nome:String(r.nome||"Participante"),telefone:String(r.telefone||""),quantidade:0,reservas:0});
+  const participant=participants.get(key);
+  participant.quantidade+=(Array.isArray(r.numeros)?r.numeros.length:0);
+  participant.reservas++;
+  const name=String(r.nome||"").trim();
+  if(name&&name!==participant.nome)participant.nome=`${participant.nome} / ${name}`;
+ }
+ const totalNumeros=[...participants.values()].reduce((sum,p)=>sum+p.quantidade,0);
+ const total=document.createElement("div");total.className="record";const totalLabel=document.createElement("strong");totalLabel.textContent=`${participants.size} participante${participants.size===1?"":"s"} · ${totalNumeros} número${totalNumeros===1?"":"s"} reservado${totalNumeros===1?"":"s"}`;total.append(totalLabel);summary.append(total);
+ for(const p of [...participants.values()].sort((a,b)=>b.quantidade-a.quantidade)){
+  const card=document.createElement("div");card.className="record";
+  const name=document.createElement("strong");name.textContent=p.nome;card.append(name);
+  const detail=document.createElement("div");detail.textContent=`Telefone: ${p.telefone||"não informado (contado por reserva)"} | ${p.quantidade} número${p.quantidade===1?"":"s"} em ${p.reservas} reserva${p.reservas===1?"":"s"}`;card.append(detail);summary.append(card);
+ }
+ for(const r of reservations){
   const d=document.createElement("div");d.className="record";
   const title=document.createElement("strong");title.textContent=r.nome;d.append(title);
   const detail=document.createElement("div");detail.textContent=`${new Date(r.criado_em).toLocaleString("pt-BR")} | Números: ${(r.numeros||[]).join(", ")} | Total: ${money(r.valor_centavos/100)} | Telefone: ${r.telefone||"não informado"}`;d.append(detail);
